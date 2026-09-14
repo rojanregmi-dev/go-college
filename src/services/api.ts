@@ -10,12 +10,19 @@ export type CampusActivity = {
   interested_count: number;
 };
 
+export type NewCampusActivity = {
+  title: string;
+  group_name: string;
+  period: string;
+  location: string;
+  category: string;
+  interested_count: number;
+};
+
 export async function saveAvailability(period: string) {
   const response = await fetch(`${API_BASE_URL}/availability`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       user_name: 'Rojan',
       period,
@@ -35,6 +42,20 @@ export async function getActivities(): Promise<CampusActivity[]> {
 
   if (!response.ok) {
     throw new Error('Failed to load activities');
+  }
+
+  return response.json();
+}
+
+export async function createActivity(activity: NewCampusActivity) {
+  const response = await fetch(`${API_BASE_URL}/activities`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(activity),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to create activity');
   }
 
   return response.json();
