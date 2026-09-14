@@ -1,25 +1,28 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { createActivity } from '../../services/api';
 
 const timeOptions = ['Now', 'Today', 'Tonight', 'Custom Date'];
+const postTypes = ['Meet', 'Activity'];
 
 export default function CreateScreen() {
   const router = useRouter();
   const [title, setTitle] = useState('');
+  const [postType, setPostType] = useState('Meet');
   const [groupName, setGroupName] = useState('');
   const [location, setLocation] = useState('');
-  const [category, setCategory] = useState('');
   const [selectedTime, setSelectedTime] = useState('Tonight');
   const [customTime, setCustomTime] = useState('');
+  const [photoSelected, setPhotoSelected] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function handleCreatePlan() {
     const period = selectedTime === 'Custom Date' ? customTime.trim() : selectedTime;
 
-    if (!title.trim() || !groupName.trim() || !location.trim() || !category.trim() || !period) {
-      Alert.alert('Missing info', 'Fill out the plan, group, location, category, and time.');
+    if (!title.trim() || !groupName.trim() || !location.trim() || !period) {
+      Alert.alert('Missing info', 'Fill out the plan, poster or host, location, and time.');
       return;
     }
 
@@ -30,7 +33,7 @@ export default function CreateScreen() {
         group_name: groupName.trim(),
         period,
         location: location.trim(),
-        category: category.trim(),
+        category: postType,
         interested_count: 1,
       });
 
@@ -49,10 +52,41 @@ export default function CreateScreen() {
       <Text style={styles.title}>Start something</Text>
       <Text style={styles.subtitle}>Post a campus plan for now, later today, tonight, or a future time.</Text>
 
+      <Pressable style={styles.photoButton} onPress={() => setPhotoSelected(true)}>
+        <Ionicons name={photoSelected ? 'image' : 'image-outline'} size={24} color="#0F4C81" />
+        <Text style={styles.photoButtonText}>
+          {photoSelected ? 'Photo selected' : 'Choose photo'}
+        </Text>
+      </Pressable>
+
+      <Text style={styles.sectionLabel}>What are you posting?</Text>
+      <View style={styles.timeGrid}>
+        {postTypes.map((type) => {
+          const selected = postType === type;
+
+          return (
+            <Pressable
+              key={type}
+              onPress={() => setPostType(type)}
+              style={[styles.timeOption, selected && styles.timeOptionSelected]}
+            >
+              <Text style={[styles.timeText, selected && styles.timeTextSelected]}>
+                {type}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <TextInput value={title} onChangeText={setTitle} placeholder="Plan title" placeholderTextColor="#94A3B8" style={styles.input} />
-      <TextInput value={groupName} onChangeText={setGroupName} placeholder="Group name" placeholderTextColor="#94A3B8" style={styles.input} />
+      <TextInput
+        value={groupName}
+        onChangeText={setGroupName}
+        placeholder={postType === 'Meet' ? 'Posted by, like Rojan' : 'Hosted by, like GO Builders'}
+        placeholderTextColor="#94A3B8"
+        style={styles.input}
+      />
       <TextInput value={location} onChangeText={setLocation} placeholder="Location" placeholderTextColor="#94A3B8" style={styles.input} />
-      <TextInput value={category} onChangeText={setCategory} placeholder="Category" placeholderTextColor="#94A3B8" style={styles.input} />
 
       <Text style={styles.sectionLabel}>When?</Text>
       <View style={styles.timeGrid}>
@@ -83,6 +117,8 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 12, fontWeight: '800', color: '#16A34A', letterSpacing: 1.5 },
   title: { marginTop: 8, fontSize: 34, fontWeight: '900', color: '#0F172A' },
   subtitle: { marginTop: 12, marginBottom: 24, fontSize: 16, lineHeight: 23, color: '#64748B' },
+  photoButton: { minHeight: 92, borderRadius: 20, borderWidth: 1, borderColor: '#B7E8F0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  photoButtonText: { color: '#0F4C81', fontSize: 16, fontWeight: '900' },
   input: { marginTop: 14, backgroundColor: '#FFFFFF', borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, color: '#0F172A', fontWeight: '600' },
   sectionLabel: { marginTop: 24, marginBottom: 12, fontSize: 15, fontWeight: '900', color: '#0F172A' },
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
