@@ -1,5 +1,15 @@
 export const API_BASE_URL = 'http://' + '10.43.56.78:8000';
 
+export type CampusActivity = {
+  id: number;
+  title: string;
+  group_name: string;
+  period: string;
+  location: string;
+  category: string;
+  interested_count: number;
+};
+
 export async function saveAvailability(period: string) {
   const response = await fetch(`${API_BASE_URL}/availability`, {
     method: 'POST',
@@ -15,6 +25,16 @@ export async function saveAvailability(period: string) {
 
   if (!response.ok) {
     throw new Error('Failed to save availability');
+  }
+
+  return response.json();
+}
+
+export async function getActivities(): Promise<CampusActivity[]> {
+  const response = await fetch(`${API_BASE_URL}/activities`);
+
+  if (!response.ok) {
+    throw new Error('Failed to load activities');
   }
 
   return response.json();

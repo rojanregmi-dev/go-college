@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
-from .models import Availability
+from .models import Activity, Availability
 
 Base.metadata.create_all(bind=engine)
 
@@ -23,6 +23,43 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def seed_demo_activities(db: Session):
+    existing_activity = db.query(Activity).first()
+
+    if existing_activity:
+        return
+
+    activities = [
+        Activity(
+            title="Basketball at 6 PM",
+            group_name="Basketball Runs",
+            period="Tonight",
+            location="Student Rec Center",
+            category="Sports",
+            interested_count=4,
+        ),
+        Activity(
+            title="Calc Study",
+            group_name="CS Study Group",
+            period="Tonight",
+            location="Alkek Library",
+            category="Study",
+            interested_count=3,
+        ),
+        Activity(
+            title="Coffee after class",
+            group_name="Foodies",
+            period="Now",
+            location="LBJ Student Center",
+            category="Food",
+            interested_count=2,
+        ),
+    ]
+
+    db.add_all(activities)
+    db.commit()
 
 
 @app.get("/")
@@ -68,6 +105,26 @@ def get_availability(db: Session = Depends(get_db)):
             "user_name": record.user_name,
             "period": record.period,
             "is_available": record.is_available,
+        }
+        for record in records
+    ]
+
+
+@app.get("/activities")
+def get_activities(db: Session = Depends(get_db)):
+    seed_demo_activities(db)
+
+    records = db.query(Activity).all()
+
+    return [
+        {
+            "id": record.id,
+            "title": record.title,
+            "group_name": record.group_name,
+            "period": record.period,
+            "location": record.location,
+            "category": record.category,
+            "interested_count": record.interested_count,
         }
         for record in records
     ]
