@@ -44,3 +44,4 @@ example
 backend/.venv/
 __pycache__/
 *.pyc
+backend/*.db
