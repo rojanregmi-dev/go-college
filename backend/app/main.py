@@ -16,6 +16,15 @@ class AvailabilityCreate(BaseModel):
     is_available: bool = True
 
 
+class ActivityCreate(BaseModel):
+    title: str
+    group_name: str
+    period: str
+    location: str
+    category: str
+    interested_count: int = 1
+
+
 def get_db():
     db = SessionLocal()
 
@@ -108,6 +117,36 @@ def get_availability(db: Session = Depends(get_db)):
         }
         for record in records
     ]
+
+
+
+@app.post("/activities")
+def create_activity(
+    activity: ActivityCreate,
+    db: Session = Depends(get_db),
+):
+    record = Activity(
+        title=activity.title,
+        group_name=activity.group_name,
+        period=activity.period,
+        location=activity.location,
+        category=activity.category,
+        interested_count=activity.interested_count,
+    )
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return {
+        "id": record.id,
+        "title": record.title,
+        "group_name": record.group_name,
+        "period": record.period,
+        "location": record.location,
+        "category": record.category,
+        "interested_count": record.interested_count,
+    }
 
 
 @app.get("/activities")
