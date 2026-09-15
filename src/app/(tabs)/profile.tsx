@@ -4,12 +4,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { API_BASE_URL, getProfile, logoutUser, setCurrentUserCode, updateProfile, uploadFile } from '../../services/api';
+import { API_BASE_URL, getProfile, logoutUser, updateProfile, uploadFile } from '../../services/api';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [userCode, setUserCode] = useState('');
+  const [email, setEmail] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [bio, setBio] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [photoSelected, setPhotoSelected] = useState(false);
@@ -27,6 +29,8 @@ export default function ProfileScreen() {
 
           setUsername(profile.username);
           setUserCode(profile.user_code);
+          setEmail(profile.email || '');
+          setBirthday(profile.date_of_birth || '');
           setBio(profile.bio);
           setPhotoUrl(profile.photo_url);
         } catch (error) {
@@ -46,22 +50,14 @@ export default function ProfileScreen() {
       return;
     }
 
-    if (!userCode.trim()) {
-      Alert.alert('Missing ID', 'Add a demo ID before saving.');
-      return;
-    }
-
     try {
       setSaving(true);
-      const cleanCode = setCurrentUserCode(userCode);
 
       await updateProfile({
         username: username.trim(),
         bio: bio.trim(),
         photo_url: photoUrl.trim(),
-      }, cleanCode);
-
-      setUserCode(cleanCode);
+      }, userCode);
 
       Alert.alert('Profile saved', 'Your profile was updated.');
     } catch (error) {
@@ -121,6 +117,7 @@ export default function ProfileScreen() {
   }
 
   function handleSwitchUser() {
+    logoutUser();
     router.replace('/login');
   }
 
@@ -133,7 +130,7 @@ export default function ProfileScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>PROFILE</Text>
       <Text style={styles.title}>Your identity</Text>
-      <Text style={styles.subtitle}>This is what hosts and group members see.</Text>
+      <Text style={styles.subtitle}>Your profile and account.</Text>
 
       {loading && (
         <View style={styles.loadingCard}>
@@ -166,16 +163,8 @@ export default function ProfileScreen() {
           </Pressable>
 
           <View style={styles.idCard}>
-            <Text style={styles.idLabel}>Demo user ID</Text>
-            <TextInput
-              value={userCode}
-              onChangeText={setUserCode}
-              autoCapitalize="none"
-              placeholder="example: alex-txst"
-              placeholderTextColor="#94A3B8"
-              style={styles.idInput}
-              editable={false}
-            />
+            <Text style={styles.idLabel}>User ID</Text>
+            <Text selectable style={styles.idInput}>{userCode}</Text>
             <View style={styles.authButtonRow}>
               <Pressable style={styles.switchButton} onPress={handleSwitchUser}>
                 <Text style={styles.switchButtonText}>Switch user</Text>
@@ -205,6 +194,19 @@ export default function ProfileScreen() {
             style={[styles.input, styles.bioInput]}
             multiline
           />
+
+          <View style={styles.accountDetails}>
+            <View style={styles.accountHeading}>
+              <Ionicons name="lock-closed-outline" size={18} color="#0F4C81" />
+              <Text style={styles.accountTitle}>Private account details</Text>
+            </View>
+            <Text style={styles.label}>Email</Text>
+            <Text selectable accessibilityLabel="Account email" style={styles.accountValue}>{email}</Text>
+            <Text style={styles.label}>Date of birth</Text>
+            <Text accessibilityLabel="Account date of birth" style={styles.accountValue}>
+              {birthday ? new Date(birthday + 'T12:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+            </Text>
+          </View>
 
           <Pressable
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -236,7 +238,11 @@ const styles = StyleSheet.create({
   photoSubtitle: { marginTop: 3, color: '#245B91', fontSize: 13, fontWeight: '700' },
   idCard: { marginTop: 16, borderRadius: 22, backgroundColor: '#FFFFFF', padding: 18 },
   idLabel: { color: '#245B91', fontSize: 13, fontWeight: '800' },
-  idInput: { marginTop: 8, color: '#071C4D', fontSize: 22, fontWeight: '900' },
+  idInput: { marginTop: 8, color: '#071C4D', fontSize: 14, lineHeight: 21, fontWeight: '700', flexShrink: 1 },
+  accountDetails: { marginTop: 24, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#8BDBE5' },
+  accountHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  accountTitle: { color: '#071C4D', fontSize: 17, fontWeight: '800', flex: 1 },
+  accountValue: { marginTop: 6, color: '#245B91', fontSize: 16, lineHeight: 23 },
   authButtonRow: { marginTop: 12, flexDirection: 'row', gap: 10 },
   switchButton: { borderRadius: 16, backgroundColor: '#E0F7FF', paddingHorizontal: 14, paddingVertical: 10 },
   switchButtonText: { color: '#0F4C81', fontSize: 14, fontWeight: '900' },

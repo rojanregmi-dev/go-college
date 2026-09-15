@@ -136,12 +136,38 @@ Expected:
 
 ## Current Demo Flow
 
-1. Open Home to discover meets and activities.
-2. Open Post to create a meet or activity.
-3. Open an activity card to see details.
-4. Open Messages for activity chat placeholders.
-5. Open Community to create groups.
-6. Open Profile to edit username, ID display, bio, and photo placeholder.
+1. Create an account with email, username, date of birth, and a password of at least 8 characters.
+2. Open Home to discover meets and activities.
+3. Open Post to create a meet or activity with a confirmed meeting location.
+4. Request to join a plan; the host accepts or denies the request.
+5. Open Messages to chat after acceptance.
+6. Open Profile to edit username, bio, and photo, or view your private account details.
+
+## Email Accounts
+
+Login uses email and password. Email matching is case-insensitive, and duplicate
+emails are rejected. New accounts receive an independent user ID, so email and
+birthday never appear in public post/host profiles. Email and date of birth are
+stored on the profile and returned only by authenticated account responses.
+
+The backend automatically adds the new profile columns and session table to an
+existing database. Old user-ID-only accounts and their posts are retained, but
+the new demo uses fresh email accounts; there is no old-account linking flow.
+
+Passwords use salted PBKDF2-HMAC-SHA256 with 600,000 iterations. Session tokens
+are stored hashed in SQLite and expire after seven days. The client holds its
+token in memory, so a full app reload requires logging in again. Logout and
+Switch user clear the client session immediately and request server revocation.
+Email format is validated; email verification and password reset are not included.
+
+Install the test dependencies and run the account checks from the repository root:
+
+```bash
+backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt
+backend/.venv/bin/python backend/tests/test_email_auth.py
+```
+
+These checks use a temporary database, including an old-schema migration test.
 
 ## Location Radius
 

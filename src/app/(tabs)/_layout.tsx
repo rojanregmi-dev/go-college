@@ -1,7 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
+import { useSyncExternalStore } from 'react';
+import { getSessionToken, subscribeSession } from '../../services/api';
 
 export default function TabLayout() {
+  const token = useSyncExternalStore(subscribeSession, getSessionToken, () => null);
+  if (!token) return <Redirect href="/login" />;
+
   return (
     <Tabs
       screenOptions={{

@@ -1,17 +1,19 @@
 import hashlib
 import hmac
 import secrets
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
-from .models import Activity, Availability, JoinRequest, Message, UserProfile
+from .models import Activity, AuthSession, Availability, JoinRequest, Message, UserProfile
 
 Base.metadata.create_all(bind=engine)
 
@@ -54,6 +56,8 @@ def ensure_user_profile_columns():
     required_columns = {
         "password_hash": "VARCHAR DEFAULT ''",
         "password_salt": "VARCHAR DEFAULT ''",
+        "email": "VARCHAR COLLATE NOCASE",
+        "date_of_birth": "DATE",
     }
 
     with engine.begin() as connection:
@@ -67,6 +71,11 @@ def ensure_user_profile_columns():
                 connection.exec_driver_sql(
                     f"ALTER TABLE user_profiles ADD COLUMN {column_name} {column_type}"
                 )
+
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_user_profiles_email "
+            "ON user_profiles(email COLLATE NOCASE)"
+        )
 
 
 ensure_user_profile_columns()
@@ -101,15 +110,38 @@ class ActivityCreate(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    username: str
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    username: str = Field(min_length=2, max_length=40)
     bio: str = ""
     photo_url: str = ""
 
 
-class AuthRequest(BaseModel):
-    user_id: str
-    password: str
-    username: str = ""
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value):
+        return value.lower()
+
+
+class RegisterRequest(LoginRequest):
+    username: str = Field(min_length=2, max_length=40)
+    date_of_birth: date
+    password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def clean_username(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_birthday(cls, value):
+        if not date(1900, 1, 1) <= value <= date.today():
+            raise ValueError("Enter a valid birth date between 1900 and today")
+        return value
 
 
 class JoinRequestCreate(BaseModel):
@@ -146,7 +178,8 @@ def normalize_user_code(user_code: str):
 
 
 def hash_password(password: str, salt: str):
-    return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 600000).hex()
+    return f"pbkdf2_sha256$600000${digest}"
 
 
 def set_profile_password(profile: UserProfile, password: str):
@@ -163,14 +196,44 @@ def password_matches(profile: UserProfile, password: str):
     return hmac.compare_digest(password_hash, profile.password_hash)
 
 
-def profile_response(profile: UserProfile):
-    return {
+def profile_response(profile: UserProfile, private: bool = False):
+    result = {
         "id": profile.id,
         "username": profile.username,
         "user_code": profile.user_code,
         "bio": profile.bio,
         "photo_url": profile.photo_url,
     }
+    if private:
+        result["email"] = profile.email
+        result["date_of_birth"] = profile.date_of_birth.isoformat() if profile.date_of_birth else None
+    return result
+
+
+def start_session(profile: UserProfile, db: Session):
+    token = secrets.token_urlsafe(32)
+    db.add(AuthSession(
+        token_hash=hashlib.sha256(token.encode()).hexdigest(),
+        user_code=profile.user_code,
+        expires_at=datetime.utcnow() + timedelta(days=7),
+    ))
+    db.commit()
+    return {"profile": profile_response(profile, private=True), "token": token}
+
+
+def current_session(authorization: str = Header(default=""), db: Session = Depends(get_db)):
+    scheme, _, token = authorization.partition(" ")
+    session = db.get(AuthSession, hashlib.sha256(token.encode()).hexdigest()) if token else None
+    if scheme.lower() != "bearer" or not session or session.expires_at <= datetime.utcnow():
+        raise HTTPException(status_code=401, detail="Please log in again")
+    return session
+
+
+def current_profile(session: AuthSession = Depends(current_session), db: Session = Depends(get_db)):
+    profile = db.query(UserProfile).filter(UserProfile.user_code == session.user_code).first()
+    if not profile:
+        raise HTTPException(status_code=401, detail="Please log in again")
+    return profile
 
 
 def join_request_response(request: JoinRequest, activity: Activity):
@@ -382,23 +445,30 @@ def get_profile(db: Session = Depends(get_db)):
     return profile_response(profile)
 
 
+@app.get("/profile/me")
+def get_my_profile(profile: UserProfile = Depends(current_profile)):
+    return profile_response(profile, private=True)
+
+
 @app.get("/profile/{user_code}")
 def get_profile_by_code(
     user_code: str,
     db: Session = Depends(get_db),
 ):
-    profile = seed_profile(db, user_code)
+    profile = db.query(UserProfile).filter(UserProfile.user_code == normalize_user_code(user_code)).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
 
     return profile_response(profile)
 
 
 @app.put("/profile")
+@app.put("/profile/me")
 def update_profile(
     profile_update: ProfileUpdate,
+    profile: UserProfile = Depends(current_profile),
     db: Session = Depends(get_db),
 ):
-    profile = seed_default_profile(db)
-
     profile.username = profile_update.username
     profile.bio = profile_update.bio
     profile.photo_url = profile_update.photo_url
@@ -406,76 +476,66 @@ def update_profile(
     db.commit()
     db.refresh(profile)
 
-    return profile_response(profile)
+    return profile_response(profile, private=True)
 
 
 @app.put("/profile/{user_code}")
 def update_profile_by_code(
     user_code: str,
     profile_update: ProfileUpdate,
+    profile: UserProfile = Depends(current_profile),
     db: Session = Depends(get_db),
 ):
-    profile = seed_profile(db, user_code)
-
-    profile.username = profile_update.username
-    profile.bio = profile_update.bio
-    profile.photo_url = profile_update.photo_url
-
-    db.commit()
-    db.refresh(profile)
-
-    return profile_response(profile)
+    if profile.user_code != normalize_user_code(user_code):
+        raise HTTPException(status_code=403, detail="You can only update your own profile")
+    return update_profile(profile_update, profile, db)
 
 
 @app.post("/auth/register")
 def register_user(
-    auth: AuthRequest,
+    auth: RegisterRequest,
     db: Session = Depends(get_db),
 ):
-    user_code = normalize_user_code(auth.user_id)
-    password = auth.password.strip()
-
-    if len(password) < 4:
-        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
-
-    profile = (
-        db.query(UserProfile)
-        .filter(UserProfile.user_code == user_code)
-        .first()
+    profile = UserProfile(
+        username=auth.username,
+        user_code=f"go-{uuid4().hex}",
+        email=auth.email,
+        date_of_birth=auth.date_of_birth,
+        bio="",
+        photo_url="",
     )
-
-    if profile and profile.password_hash:
-        raise HTTPException(status_code=400, detail="User ID already exists")
-
-    if not profile:
-        profile = seed_profile(db, user_code)
-
-    username = auth.username.strip() or profile.username
-    profile.username = username
-    set_profile_password(profile, password)
-
-    db.commit()
-    db.refresh(profile)
-
-    return profile_response(profile)
+    set_profile_password(profile, auth.password)
+    db.add(profile)
+    try:
+        db.flush()
+        return start_session(profile, db)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="An account already uses this email. Log in instead.")
 
 
 @app.post("/auth/login")
 def login_user(
-    auth: AuthRequest,
+    auth: LoginRequest,
     db: Session = Depends(get_db),
 ):
-    user_code = normalize_user_code(auth.user_id)
     profile = (
         db.query(UserProfile)
-        .filter(UserProfile.user_code == user_code)
+        .filter(UserProfile.email == auth.email)
         .first()
     )
 
     if not profile or not password_matches(profile, auth.password):
-        raise HTTPException(status_code=401, detail="Invalid User ID or password")
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    return profile_response(profile)
+    return start_session(profile, db)
+
+
+@app.post("/auth/logout")
+def logout_user(session: AuthSession = Depends(current_session), db: Session = Depends(get_db)):
+    db.delete(session)
+    db.commit()
+    return {"logged_out": True}
 
 
 @app.get("/health")

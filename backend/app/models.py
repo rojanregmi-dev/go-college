@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, String
 
 from .database import Base
 
@@ -40,10 +40,20 @@ class UserProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, nullable=False)
     user_code = Column(String, nullable=False, unique=True)
+    email = Column(String(collation="NOCASE"), nullable=True, unique=True)
+    date_of_birth = Column(Date, nullable=True)
     bio = Column(String, default="")
     photo_url = Column(String, default="")
     password_hash = Column(String, default="")
     password_salt = Column(String, default="")
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    token_hash = Column(String, primary_key=True)
+    user_code = Column(String, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
 
 
 class JoinRequest(Base):

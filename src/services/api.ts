@@ -6,6 +6,22 @@ export const API_BASE_URL = `http://${expoHost ?? '10.43.56.78'}:8000`;
 const DEFAULT_USER_CODE = 'rojan-txst';
 
 let currentUserCode = DEFAULT_USER_CODE;
+let sessionToken: string | null = null;
+const sessionListeners = new Set<() => void>();
+
+export function getSessionToken() {
+  return sessionToken;
+}
+
+export function subscribeSession(listener: () => void) {
+  sessionListeners.add(listener);
+  return () => { sessionListeners.delete(listener); };
+}
+
+function authHeaders(): Record<string, string> {
+  if (!sessionToken) throw new Error('Please log in again.');
+  return { Authorization: `Bearer ${sessionToken}` };
+}
 
 export function getCurrentUserCode() {
   return currentUserCode;
@@ -18,7 +34,15 @@ export function setCurrentUserCode(userCode: string) {
 }
 
 export function logoutUser() {
+  const token = sessionToken;
+  sessionToken = null;
   currentUserCode = DEFAULT_USER_CODE;
+  sessionListeners.forEach((listener) => listener());
+  if (token) {
+    void fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => undefined);
+  }
 }
 
 export type CampusActivity = {
@@ -62,12 +86,18 @@ export type UserProfile = {
   user_code: string;
   bio: string;
   photo_url: string;
+  email?: string | null;
+  date_of_birth?: string | null;
 };
 
 export type AuthInput = {
-  user_id: string;
+  email: string;
   password: string;
-  username?: string;
+};
+
+export type RegisterInput = AuthInput & {
+  username: string;
+  date_of_birth: string;
 };
 
 export type JoinRequest = {
@@ -156,8 +186,11 @@ export async function deleteActivity(
 
 
 export async function getProfile(userCode = getCurrentUserCode()): Promise<UserProfile> {
-  const cleanCode = setCurrentUserCode(userCode);
-  const response = await fetch(`${API_BASE_URL}/profile/${encodeURIComponent(cleanCode)}`);
+  const ownProfile = userCode === getCurrentUserCode();
+  const path = ownProfile ? 'me' : encodeURIComponent(userCode);
+  const response = await fetch(`${API_BASE_URL}/profile/${path}`, {
+    headers: ownProfile ? authHeaders() : {},
+  });
 
   if (!response.ok) {
     throw new Error('Failed to load profile');
@@ -170,10 +203,10 @@ export async function updateProfile(
   profile: Pick<UserProfile, 'username' | 'bio' | 'photo_url'>,
   userCode = getCurrentUserCode()
 ) {
-  const cleanCode = setCurrentUserCode(userCode);
-  const response = await fetch(`${API_BASE_URL}/profile/${encodeURIComponent(cleanCode)}`, {
+  if (userCode !== getCurrentUserCode()) throw new Error('You can only update your own profile.');
+  const response = await fetch(`${API_BASE_URL}/profile/me`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(profile),
   });
 
@@ -185,24 +218,8 @@ export async function updateProfile(
 }
 
 
-export async function loginUser(auth: AuthInput): Promise<UserProfile> {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(auth),
-  });
-
-  if (!response.ok) {
-    throw new Error('Invalid User ID or password');
-  }
-
-  const profile = await response.json();
-  setCurrentUserCode(profile.user_code);
-  return profile;
-}
-
-export async function createUser(auth: AuthInput): Promise<UserProfile> {
-  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+async function authenticate(action: 'login' | 'register', auth: AuthInput | RegisterInput): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/auth/${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(auth),
@@ -210,12 +227,25 @@ export async function createUser(auth: AuthInput): Promise<UserProfile> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.detail || 'Could not create account');
+    const detail = error?.detail;
+    const message = typeof detail === 'string' ? detail : Array.isArray(detail)
+      ? detail.map((issue: { msg: string }) => issue.msg).join('\n') : 'Could not connect. Please try again.';
+    throw new Error(message);
   }
 
-  const profile = await response.json();
+  const { profile, token } = await response.json();
+  sessionToken = token;
   setCurrentUserCode(profile.user_code);
+  sessionListeners.forEach((listener) => listener());
   return profile;
+}
+
+export function loginUser(auth: AuthInput) {
+  return authenticate('login', auth);
+}
+
+export function createUser(auth: RegisterInput) {
+  return authenticate('register', auth);
 }
 
 
