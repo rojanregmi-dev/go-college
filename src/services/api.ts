@@ -17,6 +17,10 @@ export function setCurrentUserCode(userCode: string) {
   return currentUserCode;
 }
 
+export function logoutUser() {
+  currentUserCode = DEFAULT_USER_CODE;
+}
+
 export type CampusActivity = {
   id: number;
   title: string;
@@ -52,6 +56,12 @@ export type UserProfile = {
   user_code: string;
   bio: string;
   photo_url: string;
+};
+
+export type AuthInput = {
+  user_id: string;
+  password: string;
+  username?: string;
 };
 
 export async function saveAvailability(period: string) {
@@ -124,6 +134,40 @@ export async function updateProfile(
   }
 
   return response.json();
+}
+
+
+export async function loginUser(auth: AuthInput): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(auth),
+  });
+
+  if (!response.ok) {
+    throw new Error('Invalid User ID or password');
+  }
+
+  const profile = await response.json();
+  setCurrentUserCode(profile.user_code);
+  return profile;
+}
+
+export async function createUser(auth: AuthInput): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(auth),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail || 'Could not create account');
+  }
+
+  const profile = await response.json();
+  setCurrentUserCode(profile.user_code);
+  return profile;
 }
 
 

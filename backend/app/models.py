@@ -38,3 +38,5 @@ class UserProfile(Base):
     user_code = Column(String, nullable=False, unique=True)
     bio = Column(String, default="")
     photo_url = Column(String, default="")
+    password_hash = Column(String, default="")
+    password_salt = Column(String, default="")

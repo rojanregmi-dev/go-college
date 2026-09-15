@@ -1,7 +1,10 @@
+import hashlib
+import hmac
+import secrets
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, Form, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -44,6 +47,28 @@ def ensure_activity_columns():
 ensure_activity_columns()
 
 
+def ensure_user_profile_columns():
+    required_columns = {
+        "password_hash": "VARCHAR DEFAULT ''",
+        "password_salt": "VARCHAR DEFAULT ''",
+    }
+
+    with engine.begin() as connection:
+        existing_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(user_profiles)")
+        }
+
+        for column_name, column_type in required_columns.items():
+            if column_name not in existing_columns:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE user_profiles ADD COLUMN {column_name} {column_type}"
+                )
+
+
+ensure_user_profile_columns()
+
+
 class AvailabilityCreate(BaseModel):
     user_name: str
     period: str
@@ -70,6 +95,12 @@ class ProfileUpdate(BaseModel):
     photo_url: str = ""
 
 
+class AuthRequest(BaseModel):
+    user_id: str
+    password: str
+    username: str = ""
+
+
 def get_db():
     db = SessionLocal()
 
@@ -86,6 +117,34 @@ def normalize_user_code(user_code: str):
         return clean_code
 
     return "rojan-txst"
+
+
+def hash_password(password: str, salt: str):
+    return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
+
+
+def set_profile_password(profile: UserProfile, password: str):
+    salt = secrets.token_hex(16)
+    profile.password_salt = salt
+    profile.password_hash = hash_password(password, salt)
+
+
+def password_matches(profile: UserProfile, password: str):
+    if not profile.password_hash or not profile.password_salt:
+        return False
+
+    password_hash = hash_password(password, profile.password_salt)
+    return hmac.compare_digest(password_hash, profile.password_hash)
+
+
+def profile_response(profile: UserProfile):
+    return {
+        "id": profile.id,
+        "username": profile.username,
+        "user_code": profile.user_code,
+        "bio": profile.bio,
+        "photo_url": profile.photo_url,
+    }
 
 
 def seed_profile(db: Session, user_code: str = "rojan-txst"):
@@ -210,13 +269,7 @@ def root():
 def get_profile(db: Session = Depends(get_db)):
     profile = seed_default_profile(db)
 
-    return {
-        "id": profile.id,
-        "username": profile.username,
-        "user_code": profile.user_code,
-        "bio": profile.bio,
-        "photo_url": profile.photo_url,
-    }
+    return profile_response(profile)
 
 
 @app.get("/profile/{user_code}")
@@ -226,13 +279,7 @@ def get_profile_by_code(
 ):
     profile = seed_profile(db, user_code)
 
-    return {
-        "id": profile.id,
-        "username": profile.username,
-        "user_code": profile.user_code,
-        "bio": profile.bio,
-        "photo_url": profile.photo_url,
-    }
+    return profile_response(profile)
 
 
 @app.put("/profile")
@@ -249,13 +296,7 @@ def update_profile(
     db.commit()
     db.refresh(profile)
 
-    return {
-        "id": profile.id,
-        "username": profile.username,
-        "user_code": profile.user_code,
-        "bio": profile.bio,
-        "photo_url": profile.photo_url,
-    }
+    return profile_response(profile)
 
 
 @app.put("/profile/{user_code}")
@@ -273,13 +314,58 @@ def update_profile_by_code(
     db.commit()
     db.refresh(profile)
 
-    return {
-        "id": profile.id,
-        "username": profile.username,
-        "user_code": profile.user_code,
-        "bio": profile.bio,
-        "photo_url": profile.photo_url,
-    }
+    return profile_response(profile)
+
+
+@app.post("/auth/register")
+def register_user(
+    auth: AuthRequest,
+    db: Session = Depends(get_db),
+):
+    user_code = normalize_user_code(auth.user_id)
+    password = auth.password.strip()
+
+    if len(password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+
+    profile = (
+        db.query(UserProfile)
+        .filter(UserProfile.user_code == user_code)
+        .first()
+    )
+
+    if profile and profile.password_hash:
+        raise HTTPException(status_code=400, detail="User ID already exists")
+
+    if not profile:
+        profile = seed_profile(db, user_code)
+
+    username = auth.username.strip() or profile.username
+    profile.username = username
+    set_profile_password(profile, password)
+
+    db.commit()
+    db.refresh(profile)
+
+    return profile_response(profile)
+
+
+@app.post("/auth/login")
+def login_user(
+    auth: AuthRequest,
+    db: Session = Depends(get_db),
+):
+    user_code = normalize_user_code(auth.user_id)
+    profile = (
+        db.query(UserProfile)
+        .filter(UserProfile.user_code == user_code)
+        .first()
+    )
+
+    if not profile or not password_matches(profile, auth.password):
+        raise HTTPException(status_code=401, detail="Invalid User ID or password")
+
+    return profile_response(profile)
 
 
 @app.get("/health")

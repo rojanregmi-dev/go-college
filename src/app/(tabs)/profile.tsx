@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { API_BASE_URL, getProfile, setCurrentUserCode, updateProfile, uploadFile } from '../../services/api';
+import { API_BASE_URL, getProfile, logoutUser, setCurrentUserCode, updateProfile, uploadFile } from '../../services/api';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const [username, setUsername] = useState('');
   const [userCode, setUserCode] = useState('');
   const [bio, setBio] = useState('');
@@ -70,30 +71,6 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleSwitchUser() {
-    if (!userCode.trim()) {
-      Alert.alert('Missing ID', 'Type a demo ID like alex-txst.');
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const cleanCode = setCurrentUserCode(userCode);
-      const profile = await getProfile(cleanCode);
-
-      setUsername(profile.username);
-      setUserCode(profile.user_code);
-      setBio(profile.bio);
-      setPhotoUrl(profile.photo_url);
-      setPhotoSelected(false);
-    } catch (error) {
-      Alert.alert('Connection error', 'Could not switch demo user.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handlePickPhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -143,6 +120,15 @@ export default function ProfileScreen() {
     }
   }
 
+  function handleSwitchUser() {
+    router.replace('/login');
+  }
+
+  function handleLogout() {
+    logoutUser();
+    router.replace('/login');
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>PROFILE</Text>
@@ -188,10 +174,17 @@ export default function ProfileScreen() {
               placeholder="example: alex-txst"
               placeholderTextColor="#94A3B8"
               style={styles.idInput}
+              editable={false}
             />
-            <Pressable style={styles.switchButton} onPress={handleSwitchUser}>
-              <Text style={styles.switchButtonText}>Switch user</Text>
-            </Pressable>
+            <View style={styles.authButtonRow}>
+              <Pressable style={styles.switchButton} onPress={handleSwitchUser}>
+                <Text style={styles.switchButtonText}>Switch user</Text>
+              </Pressable>
+
+              <Pressable style={styles.logoutButton} onPress={handleLogout}>
+                <Text style={styles.logoutButtonText}>Logout</Text>
+              </Pressable>
+            </View>
           </View>
 
           <Text style={styles.label}>Username</Text>
@@ -244,8 +237,11 @@ const styles = StyleSheet.create({
   idCard: { marginTop: 16, borderRadius: 22, backgroundColor: '#FFFFFF', padding: 18 },
   idLabel: { color: '#245B91', fontSize: 13, fontWeight: '800' },
   idInput: { marginTop: 8, color: '#071C4D', fontSize: 22, fontWeight: '900' },
-  switchButton: { marginTop: 12, alignSelf: 'flex-start', borderRadius: 16, backgroundColor: '#E0F7FF', paddingHorizontal: 14, paddingVertical: 10 },
+  authButtonRow: { marginTop: 12, flexDirection: 'row', gap: 10 },
+  switchButton: { borderRadius: 16, backgroundColor: '#E0F7FF', paddingHorizontal: 14, paddingVertical: 10 },
   switchButtonText: { color: '#0F4C81', fontSize: 14, fontWeight: '900' },
+  logoutButton: { borderRadius: 16, backgroundColor: '#FEE2E2', paddingHorizontal: 14, paddingVertical: 10 },
+  logoutButtonText: { color: '#B91C1C', fontSize: 14, fontWeight: '900' },
   label: { marginTop: 20, color: '#071C4D', fontSize: 15, fontWeight: '900' },
   input: { marginTop: 9, borderRadius: 18, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, color: '#071C4D', fontWeight: '700' },
   bioInput: { minHeight: 112, textAlignVertical: 'top' },
