@@ -11,6 +11,10 @@ export type CampusActivity = {
   period: string;
   location: string;
   category: string;
+  description: string;
+  photo_url: string;
+  creator_photo_url: string;
+  max_people: number;
   interested_count: number;
 };
 
@@ -20,6 +24,10 @@ export type NewCampusActivity = {
   period: string;
   location: string;
   category: string;
+  description: string;
+  photo_url: string;
+  creator_photo_url: string;
+  max_people: number;
   interested_count: number;
 };
 
@@ -99,23 +107,53 @@ export async function updateProfile(profile: Pick<UserProfile, 'username' | 'bio
 }
 
 
-export async function uploadFile(uri: string, name = 'upload.jpg') {
+export async function uploadFile(
+  uri: string,
+  name?: string,
+  type?: string,
+  folder = 'misc'
+) {
+  const cleanUri = uri.split('?')[0];
+  const uriName = cleanUri.split('/').pop();
+  const fileName = name || uriName || 'upload.jpg';
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  const inferredType =
+    type ||
+    (extension === 'png'
+      ? 'image/png'
+      : extension === 'webp'
+        ? 'image/webp'
+      : extension === 'heic' || extension === 'heif'
+          ? 'image/heic'
+          : 'image/jpeg');
+
   const formData = new FormData();
 
   formData.append('file', {
     uri,
-    name,
-    type: 'image/jpeg',
-  } as unknown as Blob);
+    name: fileName,
+    type: inferredType,
+  } as any);
+  formData.append('folder', folder);
 
-  const response = await fetch(`${API_BASE_URL}/uploads`, {
-    method: 'POST',
-    body: formData,
+  return new Promise<{ url: string }>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+
+    request.open('POST', `${API_BASE_URL}/uploads`);
+
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve(JSON.parse(request.responseText));
+        return;
+      }
+
+      reject(new Error(request.responseText || 'Failed to upload file'));
+    };
+
+    request.onerror = () => {
+      reject(new Error('Network error while uploading file'));
+    };
+
+    request.send(formData);
   });
-
-  if (!response.ok) {
-    throw new Error('Failed to upload file');
-  }
-
-  return response.json() as Promise<{ url: string }>;
 }

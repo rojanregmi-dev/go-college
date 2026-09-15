@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { getProfile, updateProfile } from '../../services/api';
+import { API_BASE_URL, getProfile, updateProfile, uploadFile } from '../../services/api';
 
 export default function ProfileScreen() {
   const [username, setUsername] = useState('');
@@ -12,6 +14,7 @@ export default function ProfileScreen() {
   const [photoSelected, setPhotoSelected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -59,6 +62,55 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handlePickPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to upload a profile photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    try {
+      setUploadingPhoto(true);
+
+      const asset = result.assets[0];
+      const upload = await uploadFile(
+        asset.uri,
+        asset.fileName ?? undefined,
+        asset.mimeType ?? undefined,
+        'profiles'
+      );
+      const nextPhotoUrl = upload.url;
+
+      setPhotoUrl(nextPhotoUrl);
+      setPhotoSelected(true);
+
+      await updateProfile({
+        username: username.trim(),
+        bio: bio.trim(),
+        photo_url: nextPhotoUrl,
+      });
+
+      Alert.alert('Photo uploaded', 'Your profile photo was saved.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not upload your profile photo.';
+      Alert.alert('Upload failed', message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>PROFILE</Text>
@@ -74,13 +126,23 @@ export default function ProfileScreen() {
 
       {!loading && (
         <>
-          <Pressable style={styles.photoButton} onPress={() => setPhotoSelected(true)}>
+          <Pressable style={styles.photoButton} onPress={handlePickPhoto}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{username ? username[0].toUpperCase() : 'G'}</Text>
+              {photoUrl ? (
+                <Image
+                  source={{ uri: `${API_BASE_URL}${photoUrl}` }}
+                  style={styles.avatarImage}
+                  contentFit="cover"
+                />
+              ) : (
+                <Text style={styles.avatarText}>{username ? username[0].toUpperCase() : 'G'}</Text>
+              )}
             </View>
             <View style={styles.photoTextWrap}>
-              <Text style={styles.photoTitle}>{photoSelected ? 'Photo selected' : 'Upload photo'}</Text>
-              <Text style={styles.photoSubtitle}>Real upload connects later with backend storage.</Text>
+              <Text style={styles.photoTitle}>
+                {uploadingPhoto ? 'Uploading...' : photoSelected || photoUrl ? 'Photo uploaded' : 'Upload photo'}
+              </Text>
+              <Text style={styles.photoSubtitle}>Choose a profile image from your phone.</Text>
             </View>
             <Ionicons name="image-outline" size={23} color="#0F4C81" />
           </Pressable>
@@ -132,6 +194,7 @@ const styles = StyleSheet.create({
   loadingText: { color: '#245B91', fontSize: 15, fontWeight: '800' },
   photoButton: { marginTop: 24, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 22, backgroundColor: '#FFFFFF', padding: 16 },
   avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#03A63C', alignItems: 'center', justifyContent: 'center' },
+  avatarImage: { width: 58, height: 58, borderRadius: 29 },
   avatarText: { color: '#FFFFFF', fontSize: 24, fontWeight: '900' },
   photoTextWrap: { flex: 1 },
   photoTitle: { color: '#071C4D', fontSize: 18, fontWeight: '900' },

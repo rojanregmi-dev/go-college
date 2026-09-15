@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, UploadFile
+from fastapi import Depends, FastAPI, File, Form, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -19,6 +19,30 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
+def ensure_activity_columns():
+    required_columns = {
+        "description": "VARCHAR DEFAULT ''",
+        "photo_url": "VARCHAR DEFAULT ''",
+        "creator_photo_url": "VARCHAR DEFAULT ''",
+        "max_people": "INTEGER DEFAULT 0",
+    }
+
+    with engine.begin() as connection:
+        existing_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(activities)")
+        }
+
+        for column_name, column_type in required_columns.items():
+            if column_name not in existing_columns:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE activities ADD COLUMN {column_name} {column_type}"
+                )
+
+
+ensure_activity_columns()
+
+
 class AvailabilityCreate(BaseModel):
     user_name: str
     period: str
@@ -31,6 +55,10 @@ class ActivityCreate(BaseModel):
     period: str
     location: str
     category: str
+    description: str = ""
+    photo_url: str = ""
+    creator_photo_url: str = ""
+    max_people: int = 0
     interested_count: int = 1
 
 
@@ -73,6 +101,38 @@ def seed_demo_activities(db: Session):
     existing_activity = db.query(Activity).first()
 
     if existing_activity:
+        demo_updates = {
+            "Basketball at 6 PM": {
+                "group_name": "Basketball Runs",
+                "category": "Activity",
+                "description": "Pickup basketball run at the rec. Bring shoes and water.",
+                "max_people": 8,
+            },
+            "Calc Study": {
+                "group_name": "Alex",
+                "category": "Meet",
+                "description": "Looking for a study partner for calc review.",
+                "max_people": 2,
+            },
+            "Coffee after class": {
+                "group_name": "Maya",
+                "category": "Meet",
+                "description": "Quick coffee and conversation between classes.",
+                "max_people": 2,
+            },
+        }
+
+        for title, values in demo_updates.items():
+            record = db.query(Activity).filter(Activity.title == title).first()
+
+            if record:
+                record.group_name = values["group_name"]
+                record.category = values["category"]
+                record.description = values["description"]
+                record.max_people = values["max_people"]
+
+        db.commit()
+
         return
 
     activities = [
@@ -81,23 +141,29 @@ def seed_demo_activities(db: Session):
             group_name="Basketball Runs",
             period="Tonight",
             location="Student Rec Center",
-            category="Sports",
+            category="Activity",
+            description="Pickup basketball run at the rec. Bring shoes and water.",
+            max_people=8,
             interested_count=4,
         ),
         Activity(
             title="Calc Study",
-            group_name="CS Study Group",
+            group_name="Alex",
             period="Tonight",
             location="Alkek Library",
-            category="Study",
+            category="Meet",
+            description="Looking for a study partner for calc review.",
+            max_people=2,
             interested_count=3,
         ),
         Activity(
             title="Coffee after class",
-            group_name="Foodies",
+            group_name="Maya",
             period="Now",
             location="LBJ Student Center",
-            category="Food",
+            category="Meet",
+            description="Quick coffee and conversation between classes.",
+            max_people=2,
             interested_count=2,
         ),
     ]
@@ -153,16 +219,24 @@ def health_check():
 
 
 @app.post("/uploads")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    folder: str = Form("misc"),
+):
+    allowed_folders = {"profiles", "activities", "misc"}
+    upload_folder = folder if folder in allowed_folders else "misc"
+
     original_name = file.filename or "upload"
-    extension = Path(original_name).suffix
+    extension = Path(original_name).suffix or ".jpg"
     safe_filename = f"{uuid4().hex}{extension}"
-    upload_path = UPLOAD_DIR / safe_filename
+    upload_path = UPLOAD_DIR / upload_folder / safe_filename
+
+    upload_path.parent.mkdir(parents=True, exist_ok=True)
 
     contents = await file.read()
     upload_path.write_bytes(contents)
 
-    return {"url": f"/uploads/{safe_filename}"}
+    return {"url": f"/uploads/{upload_folder}/{safe_filename}"}
 
 
 @app.post("/availability")
@@ -209,12 +283,18 @@ def create_activity(
     activity: ActivityCreate,
     db: Session = Depends(get_db),
 ):
+    profile = seed_default_profile(db)
+
     record = Activity(
         title=activity.title,
         group_name=activity.group_name,
         period=activity.period,
         location=activity.location,
         category=activity.category,
+        description=activity.description,
+        photo_url=activity.photo_url,
+        creator_photo_url=activity.creator_photo_url or profile.photo_url,
+        max_people=activity.max_people,
         interested_count=activity.interested_count,
     )
 
@@ -229,6 +309,10 @@ def create_activity(
         "period": record.period,
         "location": record.location,
         "category": record.category,
+        "description": record.description,
+        "photo_url": record.photo_url,
+        "creator_photo_url": record.creator_photo_url,
+        "max_people": record.max_people,
         "interested_count": record.interested_count,
     }
 
@@ -247,6 +331,10 @@ def get_activities(db: Session = Depends(get_db)):
             "period": record.period,
             "location": record.location,
             "category": record.category,
+            "description": record.description,
+            "photo_url": record.photo_url,
+            "creator_photo_url": record.creator_photo_url,
+            "max_people": record.max_people,
             "interested_count": record.interested_count,
         }
         for record in records

@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { createActivity } from '../../services/api';
+import { API_BASE_URL, createActivity, getProfile, uploadFile } from '../../services/api';
 
 const timeOptions = ['Now', 'Today', 'Tonight', 'Custom Date'];
 const postTypes = ['Meet', 'Activity'];
@@ -13,9 +15,13 @@ export default function CreateScreen() {
   const [postType, setPostType] = useState('Meet');
   const [groupName, setGroupName] = useState('');
   const [location, setLocation] = useState('');
+  const [description, setDescription] = useState('');
+  const [maxPeople, setMaxPeople] = useState('');
   const [selectedTime, setSelectedTime] = useState('Tonight');
   const [customTime, setCustomTime] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
   const [photoSelected, setPhotoSelected] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function handleCreatePlan() {
@@ -28,12 +34,18 @@ export default function CreateScreen() {
 
     try {
       setSaving(true);
+      const profile = await getProfile();
+
       await createActivity({
         title: title.trim(),
         group_name: groupName.trim(),
         period,
         location: location.trim(),
         category: postType,
+        description: description.trim(),
+        photo_url: photoUrl,
+        creator_photo_url: profile.photo_url,
+        max_people: Number(maxPeople) || 0,
         interested_count: 1,
       });
 
@@ -46,16 +58,63 @@ export default function CreateScreen() {
     }
   }
 
+  async function handlePickPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to add a post photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.82,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    try {
+      setUploadingPhoto(true);
+
+      const asset = result.assets[0];
+      const upload = await uploadFile(
+        asset.uri,
+        asset.fileName ?? undefined,
+        asset.mimeType ?? undefined,
+        'activities'
+      );
+
+      setPhotoUrl(upload.url);
+      setPhotoSelected(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not upload this photo.';
+      Alert.alert('Upload failed', message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>CREATE PLAN</Text>
       <Text style={styles.title}>Start something</Text>
       <Text style={styles.subtitle}>Post a campus plan for now, later today, tonight, or a future time.</Text>
 
-      <Pressable style={styles.photoButton} onPress={() => setPhotoSelected(true)}>
-        <Ionicons name={photoSelected ? 'image' : 'image-outline'} size={24} color="#0F4C81" />
+      <Pressable style={styles.photoButton} onPress={handlePickPhoto}>
+        {photoUrl ? (
+          <Image
+            source={{ uri: `${API_BASE_URL}${photoUrl}` }}
+            style={styles.photoPreview}
+            contentFit="cover"
+          />
+        ) : (
+          <Ionicons name="image-outline" size={24} color="#0F4C81" />
+        )}
         <Text style={styles.photoButtonText}>
-          {photoSelected ? 'Photo selected' : 'Choose photo'}
+          {uploadingPhoto ? 'Uploading...' : photoSelected ? 'Photo selected' : 'Choose photo'}
         </Text>
       </Pressable>
 
@@ -87,6 +146,8 @@ export default function CreateScreen() {
         style={styles.input}
       />
       <TextInput value={location} onChangeText={setLocation} placeholder="Location" placeholderTextColor="#94A3B8" style={styles.input} />
+      <TextInput value={description} onChangeText={setDescription} placeholder="Description" placeholderTextColor="#94A3B8" style={[styles.input, styles.descriptionInput]} multiline />
+      <TextInput value={maxPeople} onChangeText={setMaxPeople} placeholder="How many people?" placeholderTextColor="#94A3B8" style={styles.input} keyboardType="number-pad" />
 
       <Text style={styles.sectionLabel}>When?</Text>
       <View style={styles.timeGrid}>
@@ -118,8 +179,10 @@ const styles = StyleSheet.create({
   title: { marginTop: 8, fontSize: 34, fontWeight: '900', color: '#0F172A' },
   subtitle: { marginTop: 12, marginBottom: 24, fontSize: 16, lineHeight: 23, color: '#64748B' },
   photoButton: { minHeight: 92, borderRadius: 20, borderWidth: 1, borderColor: '#B7E8F0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  photoPreview: { width: '100%', height: 150, borderRadius: 18 },
   photoButtonText: { color: '#0F4C81', fontSize: 16, fontWeight: '900' },
   input: { marginTop: 14, backgroundColor: '#FFFFFF', borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, color: '#0F172A', fontWeight: '600' },
+  descriptionInput: { minHeight: 96, textAlignVertical: 'top' },
   sectionLabel: { marginTop: 24, marginBottom: 12, fontSize: 15, fontWeight: '900', color: '#0F172A' },
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   timeOption: { paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },

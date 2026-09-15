@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -10,7 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { CampusActivity, getActivities } from '../../services/api';
+import { API_BASE_URL, CampusActivity, getActivities, getProfile, UserProfile } from '../../services/api';
 
 const categoryFilters = ['All', 'Meet', 'Activity'];
 const timeFilters = ['Now', 'Today', 'Tonight', 'This Week'];
@@ -27,6 +28,7 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedTime, setSelectedTime] = useState('Now');
   const [selectedActivity, setSelectedActivity] = useState<CampusActivity | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -36,8 +38,10 @@ export default function HomeScreen() {
           setErrorMessage('');
 
           const activityData = await getActivities();
+          const profileData = await getProfile();
 
           setActivities(activityData);
+          setProfile(profileData);
         } catch (error) {
           setErrorMessage('Could not load activities around you.');
         } finally {
@@ -59,7 +63,17 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.profileDot}>
-            <Text style={styles.profileText}>R</Text>
+            {profile?.photo_url ? (
+              <Image
+                source={{ uri: `${API_BASE_URL}${profile.photo_url}` }}
+                style={styles.profileImage}
+                contentFit="cover"
+              />
+            ) : (
+              <Text style={styles.profileText}>
+                {profile?.username ? profile.username[0].toUpperCase() : 'R'}
+              </Text>
+            )}
           </View>
         </View>
 
@@ -137,7 +151,15 @@ export default function HomeScreen() {
               style={styles.card}
             >
               <View style={styles.imagePlaceholder}>
-                <Ionicons name="calendar-outline" size={34} color="#FFFFFF" />
+                {activity.photo_url ? (
+                  <Image
+                    source={{ uri: `${API_BASE_URL}${activity.photo_url}` }}
+                    style={styles.activityImage}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <Ionicons name="calendar-outline" size={34} color="#FFFFFF" />
+                )}
               </View>
 
               <View style={styles.cardBody}>
@@ -171,7 +193,7 @@ export default function HomeScreen() {
                   </Text>
 
                   <View style={styles.joinButton}>
-                  <Text style={styles.joinButtonText}>View</Text>
+                    <Text style={styles.joinButtonText}>View</Text>
                   </View>
                 </View>
               </View>
@@ -196,19 +218,38 @@ export default function HomeScreen() {
                 <Text style={styles.detailTitle}>{selectedActivity.title}</Text>
 
                 <Text style={styles.detailDescription}>
-                  {selectedActivity.group_name} {isMeet(selectedActivity) ? 'posted this meet for' : 'is hosting this activity at'} {selectedActivity.location}. It is planned for {selectedActivity.period}.
+                  {selectedActivity.description || `${selectedActivity.group_name} ${isMeet(selectedActivity) ? 'posted this meet for' : 'is hosting this activity at'} ${selectedActivity.location}. It is planned for ${selectedActivity.period}.`}
                 </Text>
 
-                <View style={styles.detailRow}>
-                  <Ionicons name="person-outline" size={18} color="#0F4C81" />
-                  <Text style={styles.detailText}>
-                    {isMeet(selectedActivity) ? 'Posted by' : 'Hosted by'} {selectedActivity.group_name}
-                  </Text>
+                <View style={styles.creatorCard}>
+                  <View style={styles.creatorAvatar}>
+                    {selectedActivity.creator_photo_url ? (
+                      <Image
+                        source={{ uri: `${API_BASE_URL}${selectedActivity.creator_photo_url}` }}
+                        style={styles.creatorImage}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <Text style={styles.creatorInitial}>
+                        {selectedActivity.group_name[0]?.toUpperCase() ?? 'G'}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.creatorTextWrap}>
+                    <Text style={styles.creatorLabel}>
+                      {isMeet(selectedActivity) ? 'Posted by' : 'Hosted by'}
+                    </Text>
+                    <Text style={styles.creatorName}>{selectedActivity.group_name}</Text>
+                  </View>
                 </View>
 
                 <View style={styles.detailRow}>
                   <Ionicons name="people-outline" size={18} color="#0F4C81" />
-                  <Text style={styles.detailText}>{selectedActivity.interested_count} people going</Text>
+                  <Text style={styles.detailText}>
+                    {selectedActivity.interested_count} going
+                    {selectedActivity.max_people ? ` • ${selectedActivity.max_people} spots` : ''}
+                  </Text>
                 </View>
 
                 <View style={styles.detailRow}>
@@ -288,6 +329,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+
+  profileImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
 
   profileText: {
@@ -421,6 +469,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#0EA5E9',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+
+  activityImage: {
+    width: '100%',
+    height: '100%',
   },
 
   cardBody: {
@@ -539,6 +593,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 23,
     fontWeight: '600',
+  },
+
+  creatorCard: {
+    marginTop: 16,
+    borderRadius: 20,
+    backgroundColor: '#F0FBFF',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  creatorAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#03A63C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+
+  creatorImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+
+  creatorInitial: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+
+  creatorTextWrap: {
+    flex: 1,
+  },
+
+  creatorLabel: {
+    color: '#245B91',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  creatorName: {
+    marginTop: 2,
+    color: '#071C4D',
+    fontSize: 17,
+    fontWeight: '900',
   },
 
   detailRow: {
