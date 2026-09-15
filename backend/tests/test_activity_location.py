@@ -1,4 +1,5 @@
 import os
+import importlib
 from pathlib import Path
 import sqlite3
 import sys
@@ -29,7 +30,12 @@ class ActivityLocationTests(unittest.TestCase):
             )""")
             db.execute("""INSERT INTO activities VALUES
                 (1, 'Existing plan', 'Host', 'Today', 'Library', 'Meet', 0)""")
-        from app import main
+        fresh_import = "app.main" not in sys.modules
+        from app import database, models, main
+        if not fresh_import:
+            importlib.reload(database)
+            importlib.reload(models)
+            main = importlib.reload(main)
         cls.api = main
         cls.addClassCleanup(main.engine.dispose)
 

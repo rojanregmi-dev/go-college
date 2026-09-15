@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import hashlib
+import importlib
 import os
 from pathlib import Path
 import sqlite3
@@ -26,7 +27,12 @@ class EmailAuthTests(unittest.TestCase):
                 bio VARCHAR, photo_url VARCHAR, password_hash VARCHAR, password_salt VARCHAR
             )""")
             db.execute("INSERT INTO user_profiles VALUES (1, 'Legacy', 'legacy-demo', '', '', '', '')")
-        from app import main
+        fresh_import = "app.main" not in sys.modules
+        from app import database, models, main
+        if not fresh_import:
+            importlib.reload(database)
+            importlib.reload(models)
+            main = importlib.reload(main)
         cls.api = main
         cls.client = TestClient(main.app)
         cls.addClassCleanup(main.engine.dispose)
@@ -131,6 +137,19 @@ class EmailAuthTests(unittest.TestCase):
             self.assertEqual(legacy.user_code, "legacy-demo")
             self.assertIsNone(legacy.email)
             self.assertIsNone(legacy.date_of_birth)
+
+    def test_local_web_preflight_allows_auth_but_rejects_other_origins(self):
+        headers = {
+            "Origin": "http://127.0.0.1:8082",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,authorization",
+        }
+        allowed = self.client.options("/auth/login", headers=headers)
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.headers["access-control-allow-origin"], headers["Origin"])
+
+        denied = self.client.options("/auth/login", headers={**headers, "Origin": "https://unrelated.example.com"})
+        self.assertEqual(denied.status_code, 400)
 
 
 if __name__ == "__main__":

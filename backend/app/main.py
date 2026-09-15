@@ -7,6 +7,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from sqlalchemy.exc import IntegrityError
@@ -18,6 +19,13 @@ from .models import Activity, AuthSession, Availability, JoinRequest, Message, U
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="GO College API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^http://(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):(?:8081|8082|19006)$",
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)

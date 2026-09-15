@@ -1,8 +1,10 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 const expoHost = Constants.expoConfig?.hostUri?.split(':')[0];
+const webHost = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hostname : null;
 
-export const API_BASE_URL = `http://${expoHost ?? '10.43.56.78'}:8000`;
+export const API_BASE_URL = `http://${webHost ?? expoHost ?? '10.43.56.78'}:8000`;
 const DEFAULT_USER_CODE = 'rojan-txst';
 
 let currentUserCode = DEFAULT_USER_CODE;

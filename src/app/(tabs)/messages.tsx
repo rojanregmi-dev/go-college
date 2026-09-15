@@ -24,6 +24,7 @@ import {
 export default function MessagesScreen() {
   const [acceptedRequests, setAcceptedRequests] = useState<JoinRequest[]>([]);
   const [currentUserCode, setCurrentUserCode] = useState('');
+  const [hostName, setHostName] = useState('the plan host');
   const [selectedRequest, setSelectedRequest] = useState<JoinRequest | null>(null);
   const [threadMessages, setThreadMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -101,6 +102,16 @@ export default function MessagesScreen() {
     };
   }, [currentUserCode, selectedRequest]);
 
+  useEffect(() => {
+    if (!selectedRequest || selectedRequest.creator_code === currentUserCode) return;
+    let active = true;
+    setHostName('the plan host');
+    getProfile(selectedRequest.creator_code)
+      .then((profile) => { if (active) setHostName(profile.username); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [currentUserCode, selectedRequest]);
+
   async function handleSendMessage() {
     const body = draft.trim();
 
@@ -124,7 +135,7 @@ export default function MessagesScreen() {
     const otherPerson =
       selectedRequest.creator_code === currentUserCode
         ? selectedRequest.requester_name
-        : `Host ${selectedRequest.creator_code}`;
+        : hostName;
 
     return (
       <View style={styles.container}>
@@ -138,11 +149,18 @@ export default function MessagesScreen() {
             <Text style={styles.backButtonText}>All messages</Text>
           </Pressable>
 
-          <Text style={styles.eyebrow}>ACCEPTED PLAN</Text>
-          <Text style={styles.title}>{selectedRequest.activity_title}</Text>
-          <Text style={styles.subtitle}>
-            Chat with {otherPerson} about {selectedRequest.activity_period.toLowerCase()} at {selectedRequest.activity_location}.
-          </Text>
+          <View style={styles.headingRow}>
+            <View style={styles.headingCopy}>
+              <Text style={styles.eyebrow}>ACCEPTED PLAN</Text>
+              <Text style={styles.threadHeading}>{selectedRequest.activity_title}</Text>
+              <Text style={styles.subtitle}>
+                Chat with {otherPerson} about {selectedRequest.activity_period.toLowerCase()} at {selectedRequest.activity_location}.
+              </Text>
+            </View>
+            <View style={styles.headingIcon}>
+              <Ionicons name="chatbubbles" size={24} color="#FFFFFF" />
+            </View>
+          </View>
 
           <View style={styles.messageList}>
             {threadLoading && (
@@ -154,6 +172,9 @@ export default function MessagesScreen() {
 
             {!threadLoading && threadMessages.length === 0 && (
               <View style={styles.statusCard}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons name="paper-plane-outline" size={23} color="#049B43" />
+                </View>
                 <Text style={styles.emptyTitle}>Start the conversation</Text>
                 <Text style={styles.emptyText}>Send a message to coordinate the accepted plan.</Text>
               </View>
@@ -167,7 +188,7 @@ export default function MessagesScreen() {
                   <View style={[styles.messageBubble, mine ? styles.messageBubbleMine : styles.messageBubbleOther]}>
                     <Text style={[styles.messageBody, mine && styles.messageBodyMine]}>{message.body}</Text>
                     <Text style={[styles.messageSender, mine && styles.messageSenderMine]}>
-                      {mine ? 'You' : message.sender_code}
+                      {mine ? 'You' : otherPerson}
                     </Text>
                   </View>
                 </View>
@@ -176,35 +197,44 @@ export default function MessagesScreen() {
           </View>
         </ScrollView>
 
-        <View style={styles.composer}>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Type a message..."
-            placeholderTextColor="#94A3B8"
-            style={styles.messageInput}
-            multiline
-            maxLength={1000}
-          />
-          <Pressable
-            style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
-            onPress={handleSendMessage}
-            disabled={!draft.trim() || sending}
-          >
-            <Ionicons name="send" size={20} color="#FFFFFF" />
-          </Pressable>
+        <View style={styles.composerBand}>
+          <View style={styles.composer}>
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Type a message..."
+              placeholderTextColor="#94A3B8"
+              style={styles.messageInput}
+              multiline
+              maxLength={1000}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
+              onPress={handleSendMessage}
+              disabled={!draft.trim() || sending}
+            >
+              <Ionicons name="send" size={20} color="#FFFFFF" />
+            </Pressable>
+          </View>
         </View>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>ACTIVITY CHAT</Text>
-      <Text style={styles.title}>Messages</Text>
-      <Text style={styles.subtitle}>
-        Chats appear after the host accepts a meet or activity request.
-      </Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.headingRow}>
+        <View style={styles.headingCopy}>
+          <Text style={styles.eyebrow}>PLAN CHAT</Text>
+          <Text style={styles.title}>Messages</Text>
+          <Text style={styles.subtitle}>Coordinate the plans you have joined.</Text>
+        </View>
+        <View style={styles.headingIcon}>
+          <Ionicons name="chatbubbles" size={24} color="#FFFFFF" />
+        </View>
+      </View>
 
       {loading && (
         <View style={styles.statusCard}>
@@ -213,7 +243,7 @@ export default function MessagesScreen() {
         </View>
       )}
 
-      {errorMessage && (
+      {!!errorMessage && (
         <View style={styles.statusCard}>
           <Text style={styles.errorText}>{errorMessage}</Text>
         </View>
@@ -221,6 +251,9 @@ export default function MessagesScreen() {
 
       {!loading && !errorMessage && acceptedRequests.length === 0 && (
         <View style={styles.statusCard}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="chatbubble-ellipses-outline" size={25} color="#049B43" />
+          </View>
           <Text style={styles.emptyTitle}>No accepted chats yet</Text>
           <Text style={styles.emptyText}>
             Send a request or accept one from Discover to start a conversation.
@@ -232,7 +265,7 @@ export default function MessagesScreen() {
         {acceptedRequests.map((request) => (
           <Pressable key={request.id} style={styles.threadCard} onPress={() => setSelectedRequest(request)}>
             <View style={styles.iconCircle}>
-              <Ionicons name="chatbubbles-outline" size={24} color="#FFFFFF" />
+              <Ionicons name="chatbubble-ellipses" size={24} color="#FFFFFF" />
             </View>
 
             <View style={styles.threadBody}>
@@ -262,9 +295,12 @@ const styles = StyleSheet.create({
   },
 
   content: {
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
     paddingHorizontal: 18,
-    paddingTop: 72,
-    paddingBottom: 32,
+    paddingTop: 64,
+    paddingBottom: 48,
   },
 
   threadScroll: {
@@ -275,7 +311,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 24,
+    marginBottom: 20,
   },
 
   backButtonText: {
@@ -291,27 +327,71 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
 
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+
+  headingCopy: {
+    flex: 1,
+  },
+
+  headingIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#049B43',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#03606E',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+  },
+
   title: {
-    marginTop: 8,
+    marginTop: 7,
     color: '#071C4D',
-    fontSize: 40,
+    fontSize: 36,
+    lineHeight: 42,
+    fontWeight: '900',
+  },
+
+  threadHeading: {
+    marginTop: 7,
+    color: '#071C4D',
+    fontSize: 30,
+    lineHeight: 36,
     fontWeight: '900',
   },
 
   subtitle: {
-    marginTop: 8,
-    color: '#071C4D',
-    fontSize: 18,
-    lineHeight: 25,
+    marginTop: 5,
+    color: '#245B91',
+    fontSize: 17,
+    lineHeight: 24,
     fontWeight: '700',
   },
 
   statusCard: {
     marginTop: 24,
-    borderRadius: 22,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#A3DDE5',
     backgroundColor: '#FFFFFF',
     padding: 18,
     gap: 8,
+  },
+
+  emptyIcon: {
+    width: 46,
+    height: 46,
+    marginBottom: 3,
+    borderRadius: 23,
+    backgroundColor: '#E4FDEB',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   statusText: {
@@ -348,7 +428,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 14,
     padding: 16,
-    borderRadius: 22,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#A3DDE5',
     backgroundColor: '#FFFFFF',
     shadowColor: '#03606E',
     shadowOffset: { width: 0, height: 6 },
@@ -439,10 +521,12 @@ const styles = StyleSheet.create({
 
   messageBubbleOther: {
     backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 4,
   },
 
   messageBubbleMine: {
     backgroundColor: '#03A63C',
+    borderBottomRightRadius: 4,
   },
 
   messageBody: {
@@ -466,21 +550,29 @@ const styles = StyleSheet.create({
     color: '#DCFCE7',
   },
 
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10,
-    padding: 12,
+  composerBand: {
     borderTopWidth: 1,
     borderTopColor: '#A7E8EC',
     backgroundColor: '#FFFFFF',
+  },
+
+  composer: {
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 10,
   },
 
   messageInput: {
     flex: 1,
     minHeight: 48,
     maxHeight: 100,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#B7E8F0',
     backgroundColor: '#F8FAFC',
