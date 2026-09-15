@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
 
 from .database import Base
 
@@ -22,6 +22,8 @@ class Activity(Base):
     group_name = Column(String, nullable=False)
     period = Column(String, nullable=False)
     location = Column(String, nullable=False)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     category = Column(String, nullable=False)
     description = Column(String, default="")
     photo_url = Column(String, default="")

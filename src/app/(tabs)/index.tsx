@@ -9,7 +9,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {
@@ -26,6 +28,8 @@ import {
   updateJoinRequestStatus,
   UserProfile,
 } from '../../services/api';
+import { distanceMiles, GeoPoint, matchesLocationFilter } from '../../lib/location';
+import { requestUserLocation } from '../../services/location';
 
 const categoryFilters = ['All', 'Meet', 'Activity'];
 const timeFilters = ['Now', 'Today', 'Tonight', 'This Week'];
@@ -46,6 +50,13 @@ export default function HomeScreen() {
   const [outgoingRequests, setOutgoingRequests] = useState<JoinRequest[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<JoinRequest[]>([]);
   const [savingRequestId, setSavingRequestId] = useState<number | null>(null);
+  const [origin, setOrigin] = useState<GeoPoint | null>(null);
+  const [nearby, setNearby] = useState(false);
+  const [radius, setRadius] = useState('10');
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const radiusMiles = Number(radius);
+  const validRadius = Number.isFinite(radiusMiles) && radiusMiles >= 0.1 && radiusMiles <= 500;
 
   async function loadHomeData() {
     try {
@@ -75,6 +86,26 @@ export default function HomeScreen() {
       loadHomeData();
     }, [])
   );
+
+  async function handleNearby(enabled: boolean) {
+    if (locating) return;
+    setSelectedActivity(null);
+    setLocationError('');
+    if (!enabled) {
+      setNearby(false);
+      return;
+    }
+    setLocating(true);
+    try {
+      const position = await requestUserLocation();
+      setOrigin(position);
+      setNearby(true);
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : 'Could not get your location.');
+    } finally {
+      setLocating(false);
+    }
+  }
 
   function isCreator(activity: CampusActivity) {
     return profile?.user_code === activity.creator_code;
@@ -237,12 +268,15 @@ export default function HomeScreen() {
     const matchesCategory =
       selectedCategory === 'All' || activity.category.toLowerCase() === selectedCategory.toLowerCase();
 
-    return matchesCategory && !isFull(activity);
+    const matchesRange = !nearby ||
+      (validRadius && matchesLocationFilter(activity, origin, radiusMiles));
+
+    return matchesCategory && !isFull(activity) && matchesRange;
   });
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={styles.topRow}>
           <View>
             <Text style={styles.brand}>GO</Text>
@@ -317,6 +351,42 @@ export default function HomeScreen() {
           })}
         </View>
 
+        <View style={styles.radiusRow}>
+          <View style={styles.nearbyToggle}>
+            <Switch
+              value={nearby}
+              onValueChange={handleNearby}
+              disabled={locating}
+              accessibilityLabel="Filter plans near my location"
+              trackColor={{ false: '#CBD5E1', true: '#42F27A' }}
+            />
+            <Text style={styles.radiusLabel}>{nearby ? 'Within' : 'Any distance'}</Text>
+          </View>
+          <View style={styles.radiusControls}>
+            <TextInput
+              value={radius}
+              onChangeText={setRadius}
+              keyboardType="decimal-pad"
+              accessibilityLabel="Search radius in miles"
+              style={[styles.radiusInput, !nearby && { opacity: 0.5 }]}
+              editable={nearby && !locating}
+              maxLength={6}
+            />
+            <Text style={styles.radiusLabel}>mi</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Use my current location"
+              onPress={() => handleNearby(true)}
+              disabled={locating}
+              style={styles.locateButton}
+            >
+              {locating ? <ActivityIndicator color="#0F4C81" /> : <Ionicons name="locate-outline" size={22} color="#0F4C81" />}
+            </Pressable>
+          </View>
+        </View>
+        {nearby && !validRadius && <Text accessibilityRole="alert" style={styles.locationError}>Enter a radius from 0.1 to 500 miles.</Text>}
+        {!!locationError && <Text accessibilityRole="alert" style={styles.locationError}>{locationError}</Text>}
+
         {loading && (
           <View style={styles.statusBox}>
             <ActivityIndicator color="#16A34A" />
@@ -324,14 +394,22 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {errorMessage && (
+        {!!errorMessage && (
           <View style={styles.statusBox}>
             <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         )}
 
+        {!loading && !errorMessage && visibleActivities.length === 0 && (!nearby || validRadius) && (
+          <Text style={styles.emptyFeed}>
+            {nearby ? `No plans within ${radiusMiles} miles.` : 'No plans found.'}
+          </Text>
+        )}
+
         <View style={styles.feed}>
-          {visibleActivities.map((activity) => (
+          {visibleActivities.map((activity) => {
+            const distance = distanceMiles(nearby ? origin : null, activity);
+            return (
             <Pressable
               key={activity.id}
               onPress={() => setSelectedActivity(activity)}
@@ -366,7 +444,10 @@ export default function HomeScreen() {
 
                 <View style={styles.metaRow}>
                   <Ionicons name="location-outline" size={15} color="#0F4C81" />
-                  <Text style={styles.metaText}>{activity.location}</Text>
+                  <Text style={styles.metaText}>
+                    {activity.location}
+                    {distance !== null ? ` - ${distance < 0.1 ? '<0.1' : distance.toFixed(1)} mi` : ''}
+                  </Text>
                 </View>
 
                 <View style={styles.metaRow}>
@@ -386,7 +467,8 @@ export default function HomeScreen() {
                 </View>
               </View>
             </Pressable>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
 
@@ -704,6 +786,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+  radiusRow: { marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  nearbyToggle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  radiusControls: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  radiusLabel: { color: '#073B66', fontSize: 14, fontWeight: '700' },
+  radiusInput: { width: 64, height: 44, borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#B7E8F0', paddingHorizontal: 8, color: '#073B66', fontSize: 16, textAlign: 'center' },
+  locateButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  locationError: { marginTop: 8, color: '#B91C1C', fontSize: 14, lineHeight: 20 },
+  emptyFeed: { paddingVertical: 24, color: '#073B66', fontSize: 16, textAlign: 'center' },
+
   statusText: {
     color: '#475569',
     fontSize: 15,
@@ -797,6 +888,8 @@ const styles = StyleSheet.create({
   bottomRow: {
     marginTop: 8,
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
@@ -809,6 +902,7 @@ const styles = StyleSheet.create({
 
   joinButton: {
     minWidth: 78,
+    maxWidth: '100%',
     borderRadius: 20,
     backgroundColor: '#03A63C',
     paddingVertical: 10,
@@ -820,6 +914,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '900',
+    textAlign: 'center',
   },
 
   modalOverlay: {

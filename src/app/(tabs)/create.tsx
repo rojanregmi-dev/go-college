@@ -3,8 +3,9 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { API_BASE_URL, createActivity, getProfile, uploadFile } from '../../services/api';
+import { describeLocation, findMeetingLocations, MeetingLocation, requestUserLocation } from '../../services/location';
 
 const timeOptions = ['Now', 'Today', 'Tonight', 'Custom Date'];
 const postTypes = ['Meet', 'Activity'];
@@ -15,6 +16,11 @@ export default function CreateScreen() {
   const [postType, setPostType] = useState('Meet');
   const [groupName, setGroupName] = useState('');
   const [location, setLocation] = useState('');
+  const [address, setAddress] = useState('');
+  const [meetingLocation, setMeetingLocation] = useState<MeetingLocation | null>(null);
+  const [locationResults, setLocationResults] = useState<MeetingLocation[]>([]);
+  const [findingLocation, setFindingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
   const [description, setDescription] = useState('');
   const [maxPeople, setMaxPeople] = useState('');
   const [selectedTime, setSelectedTime] = useState('Tonight');
@@ -32,6 +38,11 @@ export default function CreateScreen() {
       return;
     }
 
+    if (!meetingLocation) {
+      setLocationError('Choose and confirm a meeting location before posting.');
+      return;
+    }
+
     try {
       setSaving(true);
       const profile = await getProfile();
@@ -42,6 +53,8 @@ export default function CreateScreen() {
         group_name: displayName,
         period,
         location: location.trim(),
+        latitude: meetingLocation.latitude,
+        longitude: meetingLocation.longitude,
         category: postType,
         description: description.trim(),
         photo_url: photoUrl,
@@ -58,6 +71,31 @@ export default function CreateScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleFindLocation(usePhone: boolean) {
+    if (findingLocation) return;
+    setFindingLocation(true);
+    setLocationError('');
+    setMeetingLocation(null);
+    setLocationResults([]);
+    if (usePhone) setAddress('');
+    try {
+      const results = usePhone
+        ? [await describeLocation(await requestUserLocation(), 'Current location')]
+        : await findMeetingLocations(address);
+      setLocationResults(results);
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : 'Could not find this location.');
+    } finally {
+      setFindingLocation(false);
+    }
+  }
+
+  function confirmLocation(result: MeetingLocation) {
+    setMeetingLocation(result);
+    setLocationResults([]);
+    if (!location.trim()) setLocation(result.label);
   }
 
   async function handlePickPhoto() {
@@ -100,7 +138,7 @@ export default function CreateScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       <Text style={styles.eyebrow}>CREATE PLAN</Text>
       <Text style={styles.title}>Start something</Text>
       <Text style={styles.subtitle}>Post a campus plan for now, later today, tonight, or a future time.</Text>
@@ -148,7 +186,63 @@ export default function CreateScreen() {
         style={styles.input}
         editable={postType === 'Activity'}
       />
-      <TextInput value={location} onChangeText={setLocation} placeholder="Location" placeholderTextColor="#94A3B8" style={styles.input} />
+      <Text style={styles.sectionLabel}>Meeting location</Text>
+      <TextInput value={location} onChangeText={setLocation} placeholder="Place name, like Alkek Library" placeholderTextColor="#94A3B8" style={styles.input} />
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => handleFindLocation(true)}
+        disabled={findingLocation || saving}
+        style={styles.locationButton}
+      >
+        <Ionicons name="locate-outline" size={20} color="#0F4C81" />
+        <Text style={styles.locationText}>Use my location</Text>
+      </Pressable>
+      <View style={styles.addressRow}>
+        <TextInput
+          value={address}
+          onChangeText={(value) => {
+            setAddress(value);
+            setMeetingLocation(null);
+            setLocationResults([]);
+            setLocationError('');
+          }}
+          editable={!findingLocation && !saving}
+          placeholder="Street address, city, state"
+          placeholderTextColor="#64748B"
+          accessibilityLabel="Meeting address"
+          style={styles.addressInput}
+          returnKeyType="search"
+          onSubmitEditing={() => { if (address.trim()) handleFindLocation(false); }}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Find meeting address"
+          disabled={findingLocation || saving || !address.trim()}
+          onPress={() => handleFindLocation(false)}
+          style={styles.searchAddressButton}
+        >
+          <Ionicons name="search-outline" size={22} color="#0F4C81" />
+        </Pressable>
+      </View>
+      {findingLocation && <ActivityIndicator style={styles.locationStatus} color="#16A34A" />}
+      {locationResults.length > 0 && <Text style={styles.locationStatus}>Confirm meeting location</Text>}
+      {locationResults.map((result, index) => (
+        <Pressable key={index} accessibilityRole="button" onPress={() => confirmLocation(result)} style={styles.locationButton}>
+          <Ionicons name="location-outline" size={20} color="#0F4C81" />
+          <Text style={styles.locationText}>{result.label}</Text>
+          <Ionicons name="checkmark-outline" size={20} color="#15803D" />
+        </Pressable>
+      ))}
+      {meetingLocation && (
+        <View style={styles.locationButton}>
+          <Ionicons name="checkmark-circle" size={20} color="#15803D" />
+          <Text style={styles.locationText}>{meetingLocation.label}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Clear meeting location" hitSlop={10} disabled={saving} onPress={() => setMeetingLocation(null)}>
+            <Ionicons name="close-outline" size={22} color="#0F4C81" />
+          </Pressable>
+        </View>
+      )}
+      {!!locationError && <Text accessibilityRole="alert" style={styles.locationError}>{locationError}</Text>}
       <TextInput value={description} onChangeText={setDescription} placeholder="Description" placeholderTextColor="#94A3B8" style={[styles.input, styles.descriptionInput]} multiline />
       <TextInput value={maxPeople} onChangeText={setMaxPeople} placeholder="How many people?" placeholderTextColor="#94A3B8" style={styles.input} keyboardType="number-pad" />
 
@@ -168,7 +262,7 @@ export default function CreateScreen() {
         <TextInput value={customTime} onChangeText={setCustomTime} placeholder="Example: Friday at 6 PM" placeholderTextColor="#94A3B8" style={styles.input} />
       )}
 
-      <Pressable onPress={handleCreatePlan} disabled={saving} style={[styles.createButton, saving && styles.createButtonDisabled]}>
+      <Pressable onPress={handleCreatePlan} disabled={saving || findingLocation || uploadingPhoto} style={[styles.createButton, (saving || findingLocation || uploadingPhoto) && styles.createButtonDisabled]}>
         <Text style={styles.createButtonText}>{saving ? 'Creating...' : 'Create plan'}</Text>
       </Pressable>
     </ScrollView>
@@ -185,6 +279,13 @@ const styles = StyleSheet.create({
   photoPreview: { width: '100%', height: 150, borderRadius: 18 },
   photoButtonText: { color: '#0F4C81', fontSize: 16, fontWeight: '900' },
   input: { marginTop: 14, backgroundColor: '#FFFFFF', borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, color: '#0F172A', fontWeight: '600' },
+  locationButton: { marginTop: 10, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  locationText: { flex: 1, color: '#0F4C81', fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  addressRow: { marginTop: 10, flexDirection: 'row', borderWidth: 1, borderColor: '#B7E8F0', borderRadius: 8, backgroundColor: '#FFFFFF' },
+  addressInput: { flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 14, color: '#0F172A', fontSize: 15 },
+  searchAddressButton: { width: 48, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
+  locationStatus: { marginTop: 12, color: '#475569', fontSize: 14 },
+  locationError: { marginTop: 10, color: '#B91C1C', fontSize: 14, lineHeight: 20 },
   descriptionInput: { minHeight: 96, textAlignVertical: 'top' },
   sectionLabel: { marginTop: 24, marginBottom: 12, fontSize: 15, fontWeight: '900', color: '#0F172A' },
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

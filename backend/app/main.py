@@ -2,11 +2,12 @@ import hashlib
 import hmac
 import secrets
 from pathlib import Path
+from typing import Optional
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
@@ -29,6 +30,8 @@ def ensure_activity_columns():
         "creator_code": "VARCHAR DEFAULT ''",
         "creator_photo_url": "VARCHAR DEFAULT ''",
         "max_people": "INTEGER DEFAULT 0",
+        "latitude": "REAL",
+        "longitude": "REAL",
     }
 
     with engine.begin() as connection:
@@ -80,6 +83,8 @@ class ActivityCreate(BaseModel):
     group_name: str
     period: str
     location: str
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
     category: str
     description: str = ""
     photo_url: str = ""
@@ -87,6 +92,12 @@ class ActivityCreate(BaseModel):
     creator_photo_url: str = ""
     max_people: int = 0
     interested_count: int = 1
+
+    @model_validator(mode="after")
+    def validate_coordinates(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("Latitude and longitude must both be provided")
+        return self
 
 
 class ProfileUpdate(BaseModel):
@@ -232,6 +243,8 @@ def activity_response(activity: Activity, db: Session):
         "group_name": activity.group_name,
         "period": activity.period,
         "location": activity.location,
+        "latitude": activity.latitude,
+        "longitude": activity.longitude,
         "category": activity.category,
         "description": activity.description,
         "photo_url": activity.photo_url,
@@ -542,6 +555,8 @@ def create_activity(
         group_name=activity.group_name,
         period=activity.period,
         location=activity.location,
+        latitude=activity.latitude,
+        longitude=activity.longitude,
         category=activity.category,
         description=activity.description,
         photo_url=activity.photo_url,

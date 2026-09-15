@@ -143,6 +143,40 @@ Expected:
 5. Open Community to create groups.
 6. Open Profile to edit username, ID display, bio, and photo placeholder.
 
+## Location Radius
+
+New posts use a confirmed meeting location: select **Use my location**, or enter
+an address with its city and state, search, and select the matching result.
+The backend stores latitude and longitude alongside the place name. Existing
+databases receive the two nullable columns automatically on backend restart.
+
+In Discover, enable the nearby switch or tap the location icon. The radius starts
+at 10 miles and accepts values from 0.1 to 500. Distances are straight-line miles,
+not driving distances. Turn the switch off for **Any distance**. Older posts
+without coordinates only appear with that option; new posts with zero spots
+remaining stay hidden regardless of distance.
+
+Address search uses the native iOS/Android geocoder through `expo-location` and
+works in Expo Go. Web supports current location on localhost or HTTPS, but not
+native address search. Location is requested when you tap the control; there is
+no background tracking. The viewer's position stays on their device for filtering.
+After moving, tap the location icon again to update the search center.
+
+Restart Expo after installing the dependency with `npm install`:
+
+```bash
+npx expo start -c
+```
+
+Focused checks from the repository root (Node 24 for the TypeScript test import):
+
+```bash
+backend/.venv/bin/python backend/tests/test_activity_location.py
+node --test tests/location.test.cjs
+```
+
+The backend checks use a temporary database and do not change your demo data.
+
 ## Notes
 
 This is a hackathon prototype. The current local setup uses SQLite and automatic table creation. A production version would use PostgreSQL, migrations, real authentication, persistent image storage, and real-time messaging.

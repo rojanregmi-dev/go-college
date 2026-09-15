@@ -27,6 +27,8 @@ export type CampusActivity = {
   group_name: string;
   period: string;
   location: string;
+  latitude: number | null;
+  longitude: number | null;
   category: string;
   description: string;
   photo_url: string;
@@ -43,6 +45,8 @@ export type NewCampusActivity = {
   group_name: string;
   period: string;
   location: string;
+  latitude: number;
+  longitude: number;
   category: string;
   description: string;
   photo_url: string;
