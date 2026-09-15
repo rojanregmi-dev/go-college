@@ -1,56 +1,148 @@
-# Welcome to your Expo app 👋
+# GO College
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+GO College is a Shipaton 2026 mobile app prototype for discovering and coordinating campus plans.
 
-## Get started
+The app connects:
 
-1. Install dependencies
+- when students are free
+- what is happening around them
+- who is hosting or posting a meet/activity
+- where people can coordinate next
 
-   ```bash
-   npm install
-   ```
+## Stack
 
-2. Start the app
+Frontend:
 
-   ```bash
-   npx expo start
-   ```
+- Expo SDK 57
+- React Native
+- TypeScript
+- Expo Router
 
-In the output, you'll find options to open the app in a
+Backend:
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- FastAPI
+- SQLAlchemy
+- SQLite
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Project Structure
 
-## Get a fresh project
+```text
+src/                  Expo React Native app
+src/app/(tabs)/       Main tab screens
+src/services/api.ts   Frontend API helpers
 
-When you're ready, run:
-
-```bash
-npm run reset-project
+backend/app/          FastAPI backend code
+backend/app/main.py   API routes
+backend/app/models.py SQLAlchemy database models
+backend/app/database.py SQLite connection
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Frontend Setup
 
-### Other setup steps
+Install frontend dependencies:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npm install
+```
 
-## Learn more
+Start Expo:
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+npx expo start
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Use Expo Go on a phone and scan the QR code.
 
-## Join the community
+## Backend Setup
 
-Join our community of developers creating universal apps.
+Create and activate a Python virtual environment:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Install backend dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start the FastAPI backend:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The `--host 0.0.0.0` part matters because the phone needs to reach the backend over WiFi.
+
+## Database
+
+The SQLite database file is local and is not committed to Git:
+
+```text
+backend/go_college.db
+```
+
+When the backend starts, SQLAlchemy creates missing tables from the models:
+
+```python
+Base.metadata.create_all(bind=engine)
+```
+
+That means a fresh clone can create its own local database by running the backend.
+
+Current prototype data is seeded by backend helper functions when routes are used:
+
+- activities are seeded by `GET /activities`
+- default profile is seeded by `GET /profile`
+
+Do not commit `.db`, `.venv`, `__pycache__`, or `.pyc` files.
+
+## Running The App Locally
+
+Use two terminals.
+
+Terminal 1, backend:
+
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Terminal 2, frontend:
+
+```bash
+npx expo start
+```
+
+The frontend API base URL follows the Expo host IP automatically, so changing WiFi networks should not require editing code as long as the phone and Mac are on the same network.
+
+## Quick Backend Checks
+
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/activities
+curl http://127.0.0.1:8000/profile
+```
+
+Expected:
+
+- `/health` returns `{"status":"ok"}`
+- `/activities` returns feed activities
+- `/profile` returns the default or saved profile
+
+## Current Demo Flow
+
+1. Open Home to discover meets and activities.
+2. Open Post to create a meet or activity.
+3. Open an activity card to see details.
+4. Open Messages for activity chat placeholders.
+5. Open Community to create groups.
+6. Open Profile to edit username, ID display, bio, and photo placeholder.
+
+## Notes
+
+This is a hackathon prototype. The current local setup uses SQLite and automatic table creation. A production version would use PostgreSQL, migrations, real authentication, persistent image storage, and real-time messaging.
