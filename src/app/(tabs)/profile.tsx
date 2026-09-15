@@ -3,7 +3,8 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { TextStyle } from 'react-native';
 import { API_BASE_URL, getProfile, logoutUser, updateProfile, uploadFile } from '../../services/api';
 
 export default function ProfileScreen() {
@@ -15,6 +16,7 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [photoSelected, setPhotoSelected] = useState(false);
+  const [showUserCode, setShowUserCode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -24,6 +26,7 @@ export default function ProfileScreen() {
       async function loadProfile() {
         try {
           setLoading(true);
+          setShowUserCode(false);
 
           const profile = await getProfile();
 
@@ -127,10 +130,23 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>PROFILE</Text>
-      <Text style={styles.title}>Your identity</Text>
-      <Text style={styles.subtitle}>Your profile and account.</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.headingRow}>
+        <View style={styles.headingCopy}>
+          <Text style={styles.eyebrow}>PROFILE</Text>
+          <Text style={styles.title}>Your identity</Text>
+          <Text style={styles.subtitle}>The person behind every plan.</Text>
+        </View>
+        <View style={styles.headingIcon}>
+          <Ionicons name="person" size={25} color="#FFFFFF" />
+        </View>
+      </View>
 
       {loading && (
         <View style={styles.loadingCard}>
@@ -141,7 +157,13 @@ export default function ProfileScreen() {
 
       {!loading && (
         <>
-          <Pressable style={styles.photoButton} onPress={handlePickPhoto}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Choose profile photo"
+            disabled={uploadingPhoto}
+            style={styles.photoButton}
+            onPress={handlePickPhoto}
+          >
             <View style={styles.avatar}>
               {photoUrl ? (
                 <Image
@@ -163,14 +185,50 @@ export default function ProfileScreen() {
           </Pressable>
 
           <View style={styles.idCard}>
-            <Text style={styles.idLabel}>User ID</Text>
-            <Text selectable style={styles.idInput}>{userCode}</Text>
+            <View style={styles.idHeading}>
+              <View>
+                <Text style={styles.idLabel}>PRIVATE USER ID</Text>
+                <Text style={styles.idHint}>{showUserCode ? 'Visible only to you' : 'Hidden by default'}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={showUserCode ? 'Hide User ID' : 'Reveal User ID'}
+                accessibilityState={{ expanded: showUserCode }}
+                hitSlop={10}
+                onPress={() => setShowUserCode((visible) => !visible)}
+                style={styles.revealButton}
+              >
+                <Ionicons
+                  name={showUserCode ? 'eye-off-outline' : 'eye-outline'}
+                  size={21}
+                  color="#071C4D"
+                />
+              </Pressable>
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={showUserCode ? `User ID ${userCode}. Tap to hide.` : 'User ID hidden. Tap to reveal.'}
+              onPress={() => setShowUserCode((visible) => !visible)}
+              style={styles.idValueRow}
+            >
+              <Ionicons name="key-outline" size={18} color="#8BDBE5" />
+              <Text
+                selectable={showUserCode}
+                style={[styles.idInput, Platform.OS === 'web' && ({ wordBreak: 'break-all' } as TextStyle)]}
+              >
+                {showUserCode ? userCode : 'Tap to reveal your User ID'}
+              </Text>
+            </Pressable>
+
             <View style={styles.authButtonRow}>
               <Pressable style={styles.switchButton} onPress={handleSwitchUser}>
+                <Ionicons name="people-outline" size={17} color="#071C4D" />
                 <Text style={styles.switchButtonText}>Switch user</Text>
               </Pressable>
 
               <Pressable style={styles.logoutButton} onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={17} color="#FFFFFF" />
                 <Text style={styles.logoutButtonText}>Logout</Text>
               </Pressable>
             </View>
@@ -213,7 +271,14 @@ export default function ProfileScreen() {
             onPress={handleSaveProfile}
             disabled={saving}
           >
-            <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save profile'}</Text>
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Text style={styles.saveButtonText}>Save profile</Text>
+                <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+              </>
+            )}
           </Pressable>
         </>
       )}
@@ -223,35 +288,42 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#BFF7FA' },
-  content: { paddingHorizontal: 18, paddingTop: 72, paddingBottom: 32 },
+  content: { width: '100%', maxWidth: 560, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 64, paddingBottom: 48 },
+  headingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  headingCopy: { flex: 1 },
+  headingIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#049B43', alignItems: 'center', justifyContent: 'center', shadowColor: '#03606E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.16, shadowRadius: 10 },
   eyebrow: { fontSize: 12, fontWeight: '900', color: '#04924A', letterSpacing: 1.5 },
-  title: { marginTop: 8, color: '#071C4D', fontSize: 38, fontWeight: '900' },
-  subtitle: { marginTop: 8, color: '#071C4D', fontSize: 18, lineHeight: 25, fontWeight: '700' },
-  loadingCard: { marginTop: 24, borderRadius: 22, backgroundColor: '#FFFFFF', padding: 18, gap: 10 },
+  title: { marginTop: 7, color: '#071C4D', fontSize: 36, lineHeight: 42, fontWeight: '900' },
+  subtitle: { marginTop: 5, color: '#245B91', fontSize: 17, lineHeight: 24, fontWeight: '700' },
+  loadingCard: { marginTop: 24, borderRadius: 12, backgroundColor: '#FFFFFF', padding: 18, gap: 10 },
   loadingText: { color: '#245B91', fontSize: 15, fontWeight: '800' },
-  photoButton: { marginTop: 24, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 22, backgroundColor: '#FFFFFF', padding: 16 },
+  photoButton: { marginTop: 24, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 14, borderWidth: 1, borderColor: '#A3DDE5', backgroundColor: '#FFFFFF', padding: 15, shadowColor: '#03606E', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1, shadowRadius: 12 },
   avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#03A63C', alignItems: 'center', justifyContent: 'center' },
   avatarImage: { width: 58, height: 58, borderRadius: 29 },
   avatarText: { color: '#FFFFFF', fontSize: 24, fontWeight: '900' },
   photoTextWrap: { flex: 1 },
   photoTitle: { color: '#071C4D', fontSize: 18, fontWeight: '900' },
   photoSubtitle: { marginTop: 3, color: '#245B91', fontSize: 13, fontWeight: '700' },
-  idCard: { marginTop: 16, borderRadius: 22, backgroundColor: '#FFFFFF', padding: 18 },
-  idLabel: { color: '#245B91', fontSize: 13, fontWeight: '800' },
-  idInput: { marginTop: 8, color: '#071C4D', fontSize: 14, lineHeight: 21, fontWeight: '700', flexShrink: 1 },
-  accountDetails: { marginTop: 24, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#8BDBE5' },
+  idCard: { marginTop: 16, borderRadius: 14, backgroundColor: '#071C4D', padding: 18, shadowColor: '#03606E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.14, shadowRadius: 12 },
+  idHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  idLabel: { color: '#64F58C', fontSize: 12, fontWeight: '900', letterSpacing: 1.2 },
+  idHint: { marginTop: 4, color: '#B7E8F0', fontSize: 12, fontWeight: '600' },
+  revealButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#64F58C', alignItems: 'center', justifyContent: 'center' },
+  idValueRow: { minHeight: 44, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 9, borderTopWidth: 1, borderTopColor: '#244A72', paddingTop: 12 },
+  idInput: { color: '#FFFFFF', fontSize: 14, lineHeight: 21, fontWeight: '800', flex: 1 },
+  accountDetails: { marginTop: 24, borderRadius: 14, borderWidth: 1, borderColor: '#A3DDE5', backgroundColor: 'rgba(255,255,255,0.72)', padding: 16 },
   accountHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   accountTitle: { color: '#071C4D', fontSize: 17, fontWeight: '800', flex: 1 },
   accountValue: { marginTop: 6, color: '#245B91', fontSize: 16, lineHeight: 23 },
-  authButtonRow: { marginTop: 12, flexDirection: 'row', gap: 10 },
-  switchButton: { borderRadius: 16, backgroundColor: '#E0F7FF', paddingHorizontal: 14, paddingVertical: 10 },
-  switchButtonText: { color: '#0F4C81', fontSize: 14, fontWeight: '900' },
-  logoutButton: { borderRadius: 16, backgroundColor: '#FEE2E2', paddingHorizontal: 14, paddingVertical: 10 },
-  logoutButtonText: { color: '#B91C1C', fontSize: 14, fontWeight: '900' },
+  authButtonRow: { marginTop: 14, flexDirection: 'row', gap: 10 },
+  switchButton: { minHeight: 42, flex: 1, borderRadius: 8, backgroundColor: '#FFFFFF', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  switchButtonText: { color: '#071C4D', fontSize: 14, fontWeight: '900' },
+  logoutButton: { minHeight: 42, flex: 1, borderRadius: 8, backgroundColor: '#B42336', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  logoutButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
   label: { marginTop: 20, color: '#071C4D', fontSize: 15, fontWeight: '900' },
-  input: { marginTop: 9, borderRadius: 18, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, color: '#071C4D', fontWeight: '700' },
+  input: { marginTop: 9, borderRadius: 8, borderWidth: 1, borderColor: '#A3DDE5', backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, color: '#071C4D', fontWeight: '700' },
   bioInput: { minHeight: 112, textAlignVertical: 'top' },
-  saveButton: { marginTop: 24, borderRadius: 22, backgroundColor: '#03A63C', paddingVertical: 16, alignItems: 'center' },
+  saveButton: { marginTop: 24, minHeight: 54, borderRadius: 8, backgroundColor: '#049B43', paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   saveButtonDisabled: { opacity: 0.65 },
   saveButtonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
 });
