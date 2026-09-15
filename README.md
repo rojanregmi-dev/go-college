@@ -93,10 +93,16 @@ Base.metadata.create_all(bind=engine)
 
 That means a fresh clone can create its own local database by running the backend.
 
-Current prototype data is seeded by backend helper functions when routes are used:
+Activity posts are not automatically seeded. To add 12 optional Meet and Activity
+plans with local photos, create a login account, then run from the backend folder:
 
-- activities are seeded by `GET /activities`
-- default profile is seeded by `GET /profile`
+```sh
+.venv/bin/python -m scripts.seed_demo
+```
+
+The posts belong to that account, so it can accept another account's join requests.
+Running the command again does not duplicate existing demo posts. The default
+profile is still seeded by `GET /profile`.
 
 Do not commit `.db`, `.venv`, `__pycache__`, or `.pyc` files.
 

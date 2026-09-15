@@ -32,6 +32,9 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+DEMO_IMAGE_DIR = Path(__file__).resolve().parent.parent / "demo_images"
+app.mount("/demo-images", StaticFiles(directory=DEMO_IMAGE_DIR), name="demo-images")
+
 
 def ensure_activity_columns():
     required_columns = {
