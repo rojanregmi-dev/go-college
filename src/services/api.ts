@@ -97,3 +97,25 @@ export async function updateProfile(profile: Pick<UserProfile, 'username' | 'bio
 
   return response.json();
 }
+
+
+export async function uploadFile(uri: string, name = 'upload.jpg') {
+  const formData = new FormData();
+
+  formData.append('file', {
+    uri,
+    name,
+    type: 'image/jpeg',
+  } as unknown as Blob);
+
+  const response = await fetch(`${API_BASE_URL}/uploads`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to upload file');
+  }
+
+  return response.json() as Promise<{ url: string }>;
+}
