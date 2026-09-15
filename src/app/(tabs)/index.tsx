@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -11,7 +12,20 @@ import {
   Text,
   View,
 } from 'react-native';
-import { API_BASE_URL, CampusActivity, getActivities, getProfile, UserProfile } from '../../services/api';
+import {
+  API_BASE_URL,
+  CampusActivity,
+  JoinRequest,
+  cancelJoinRequest,
+  createJoinRequest,
+  deleteActivity,
+  getActivities,
+  getIncomingJoinRequests,
+  getOutgoingJoinRequests,
+  getProfile,
+  updateJoinRequestStatus,
+  UserProfile,
+} from '../../services/api';
 
 const categoryFilters = ['All', 'Meet', 'Activity'];
 const timeFilters = ['Now', 'Today', 'Tonight', 'This Week'];
@@ -29,29 +43,200 @@ export default function HomeScreen() {
   const [selectedTime, setSelectedTime] = useState('Now');
   const [selectedActivity, setSelectedActivity] = useState<CampusActivity | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [outgoingRequests, setOutgoingRequests] = useState<JoinRequest[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<JoinRequest[]>([]);
+  const [savingRequestId, setSavingRequestId] = useState<number | null>(null);
+
+  async function loadHomeData() {
+    try {
+      setLoading(true);
+      setErrorMessage('');
+
+      const profileData = await getProfile();
+      const [activityData, outgoingData, incomingData] = await Promise.all([
+        getActivities(),
+        getOutgoingJoinRequests(profileData.user_code),
+        getIncomingJoinRequests(profileData.user_code),
+      ]);
+
+      setActivities(activityData);
+      setProfile(profileData);
+      setOutgoingRequests(outgoingData);
+      setIncomingRequests(incomingData);
+    } catch (error) {
+      setErrorMessage('Could not load activities around you.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
-      async function loadActivities() {
-        try {
-          setLoading(true);
-          setErrorMessage('');
-
-          const activityData = await getActivities();
-          const profileData = await getProfile();
-
-          setActivities(activityData);
-          setProfile(profileData);
-        } catch (error) {
-          setErrorMessage('Could not load activities around you.');
-        } finally {
-          setLoading(false);
-        }
-      }
-
-      loadActivities();
+      loadHomeData();
     }, [])
   );
+
+  function isCreator(activity: CampusActivity) {
+    return profile?.user_code === activity.creator_code;
+  }
+
+  function requestForActivity(activityId: number) {
+    return outgoingRequests.find((request) => request.activity_id === activityId);
+  }
+
+  function pendingRequestsForActivity(activityId: number) {
+    return incomingRequests.filter(
+      (request) => request.activity_id === activityId && request.status === 'pending'
+    );
+  }
+
+  function isFull(activity: CampusActivity) {
+    return activity.spots_left === 0;
+  }
+
+  function actionLabel(activity: CampusActivity) {
+    if (isCreator(activity)) {
+      const pendingCount = pendingRequestsForActivity(activity.id).length;
+      return pendingCount ? `${pendingCount} request${pendingCount === 1 ? '' : 's'}` : 'No requests';
+    }
+
+    const request = requestForActivity(activity.id);
+
+    if (request?.status === 'pending') {
+      return 'Cancel request';
+    }
+
+    if (request?.status === 'accepted') {
+      return 'Open messages';
+    }
+
+    if (request?.status === 'denied') {
+      return 'Denied';
+    }
+
+    if (isFull(activity)) {
+      return 'Full';
+    }
+
+    return isMeet(activity) ? 'Request to meet' : 'Join activity';
+  }
+
+  async function handlePrimaryAction(activity: CampusActivity) {
+    if (!profile) {
+      Alert.alert('Login needed', 'Login before joining a plan.');
+      return;
+    }
+
+    if (isCreator(activity)) {
+      return;
+    }
+
+    const existingRequest = requestForActivity(activity.id);
+
+    if (existingRequest?.status === 'pending') {
+      try {
+        setSavingRequestId(activity.id);
+        await cancelJoinRequest(existingRequest.id, profile.user_code);
+        setOutgoingRequests((current) =>
+          current.filter((request) => request.id !== existingRequest.id)
+        );
+        Alert.alert('Request cancelled', 'Your request was removed.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not cancel request.';
+        Alert.alert('Cancel failed', message);
+      } finally {
+        setSavingRequestId(null);
+      }
+
+      return;
+    }
+
+    if (existingRequest?.status === 'accepted') {
+      setSelectedActivity(null);
+      router.push('/messages');
+      return;
+    }
+
+    if (existingRequest) {
+      return;
+    }
+
+    if (isFull(activity)) {
+      Alert.alert('Full', 'This plan is already full.');
+      return;
+    }
+
+    try {
+      setSavingRequestId(activity.id);
+
+      const request = await createJoinRequest(activity.id, profile.user_code);
+      setOutgoingRequests((current) => [...current, request]);
+      Alert.alert('Request sent', 'The host can accept or deny your request.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not send request.';
+      Alert.alert('Request failed', message);
+    } finally {
+      setSavingRequestId(null);
+    }
+  }
+
+  async function handleUpdateRequest(requestId: number, status: 'accepted' | 'denied') {
+    if (!profile) {
+      return;
+    }
+
+    try {
+      setSavingRequestId(requestId);
+      const updatedRequest = await updateJoinRequestStatus(requestId, status, profile.user_code);
+
+      setIncomingRequests((current) =>
+        current.map((request) => (request.id === requestId ? updatedRequest : request))
+      );
+
+      const activityData = await getActivities();
+      setActivities(activityData);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not update request.';
+      Alert.alert('Request failed', message);
+    } finally {
+      setSavingRequestId(null);
+    }
+  }
+
+  async function handleDeleteActivity(activity: CampusActivity) {
+    if (!profile || !isCreator(activity)) {
+      return;
+    }
+
+    try {
+      setSavingRequestId(activity.id);
+      await deleteActivity(activity.id, profile.user_code);
+      setActivities((current) => current.filter((item) => item.id !== activity.id));
+      setIncomingRequests((current) =>
+        current.filter((request) => request.activity_id !== activity.id)
+      );
+      setSelectedActivity(null);
+      Alert.alert('Post deleted', 'Your post was removed from Discover.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not delete post.';
+      Alert.alert('Delete failed', message);
+    } finally {
+      setSavingRequestId(null);
+    }
+  }
+
+  const visibleActivities = activities.filter((activity) => {
+    const matchesCategory =
+      selectedCategory === 'All' || activity.category.toLowerCase() === selectedCategory.toLowerCase();
+    const request = requestForActivity(activity.id);
+    const viewerIsCreator = isCreator(activity);
+    const viewerHasAcceptedRequest = request?.status === 'accepted';
+    const viewerHasPendingRequest = request?.status === 'pending';
+    const shouldShowFull =
+      !isFull(activity) || viewerIsCreator || viewerHasAcceptedRequest || viewerHasPendingRequest;
+
+    return matchesCategory && shouldShowFull;
+  });
 
   return (
     <>
@@ -144,7 +329,7 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.feed}>
-          {activities.map((activity) => (
+          {visibleActivities.map((activity) => (
             <Pressable
               key={activity.id}
               onPress={() => setSelectedActivity(activity)}
@@ -189,11 +374,12 @@ export default function HomeScreen() {
 
                 <View style={styles.bottomRow}>
                   <Text style={styles.interested}>
-                    {activity.interested_count} going
+                    {activity.accepted_count} accepted
+                    {activity.spots_left !== null ? ` • ${activity.spots_left} left` : ''}
                   </Text>
 
                   <View style={styles.joinButton}>
-                    <Text style={styles.joinButtonText}>View</Text>
+                    <Text style={styles.joinButtonText}>{actionLabel(activity)}</Text>
                   </View>
                 </View>
               </View>
@@ -206,7 +392,10 @@ export default function HomeScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.detailSheet}>
             {selectedActivity && (
-              <>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.detailContent}
+              >
                 <View style={styles.detailHeader}>
                   <Text style={styles.detailCategory}>{selectedActivity.category}</Text>
 
@@ -247,8 +436,9 @@ export default function HomeScreen() {
                 <View style={styles.detailRow}>
                   <Ionicons name="people-outline" size={18} color="#0F4C81" />
                   <Text style={styles.detailText}>
-                    {selectedActivity.interested_count} going
+                    {selectedActivity.accepted_count} accepted
                     {selectedActivity.max_people ? ` • ${selectedActivity.max_people} spots` : ''}
+                    {selectedActivity.spots_left !== null ? ` • ${selectedActivity.spots_left} left` : ''}
                   </Text>
                 </View>
 
@@ -262,23 +452,102 @@ export default function HomeScreen() {
                   <Text style={styles.detailText}>{selectedActivity.period}</Text>
                 </View>
 
-                <Pressable style={styles.detailAction}>
+                {isCreator(selectedActivity) && (
+                  <View style={styles.requestList}>
+                    <Text style={styles.requestListTitle}>Requests</Text>
+
+                    {pendingRequestsForActivity(selectedActivity.id).length === 0 && (
+                      <Text style={styles.emptyRequests}>No pending requests yet.</Text>
+                    )}
+
+                    {pendingRequestsForActivity(selectedActivity.id).map((request) => (
+                      <View key={request.id} style={styles.requestCard}>
+                        <View style={styles.requestAvatar}>
+                          {request.requester_photo_url ? (
+                            <Image
+                              source={{ uri: `${API_BASE_URL}${request.requester_photo_url}` }}
+                              style={styles.requestImage}
+                              contentFit="cover"
+                            />
+                          ) : (
+                            <Text style={styles.requestInitial}>
+                              {request.requester_name[0]?.toUpperCase() ?? 'G'}
+                            </Text>
+                          )}
+                        </View>
+
+                        <View style={styles.requestBody}>
+                          <Text style={styles.requestName}>{request.requester_name}</Text>
+                          <Text style={styles.requestMeta}>{request.requester_code}</Text>
+                        </View>
+
+                        <Pressable
+                          style={styles.acceptButton}
+                          disabled={savingRequestId === request.id}
+                          onPress={() => handleUpdateRequest(request.id, 'accepted')}
+                        >
+                          <Text style={styles.acceptButtonText}>Accept</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={styles.denyButton}
+                          disabled={savingRequestId === request.id}
+                          onPress={() => handleUpdateRequest(request.id, 'denied')}
+                        >
+                          <Text style={styles.denyButtonText}>Deny</Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {isCreator(selectedActivity) && (
+                  <Pressable
+                    style={styles.deleteAction}
+                    disabled={savingRequestId === selectedActivity.id}
+                    onPress={() => handleDeleteActivity(selectedActivity)}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#B91C1C" />
+                    <Text style={styles.deleteActionText}>
+                      {savingRequestId === selectedActivity.id ? 'Deleting...' : 'Delete post'}
+                    </Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={[
+                    styles.detailAction,
+                    (actionLabel(selectedActivity) === 'Denied' ||
+                      actionLabel(selectedActivity) === 'Full' ||
+                      actionLabel(selectedActivity) === 'No requests') &&
+                      styles.detailActionDisabled,
+                  ]}
+                  disabled={
+                    savingRequestId === selectedActivity.id ||
+                    actionLabel(selectedActivity) === 'Denied' ||
+                    actionLabel(selectedActivity) === 'Full' ||
+                    actionLabel(selectedActivity) === 'No requests'
+                  }
+                  onPress={() => handlePrimaryAction(selectedActivity)}
+                >
                   <Text style={styles.detailActionText}>
-                    {isMeet(selectedActivity) ? 'Request to meet' : 'Join activity'}
+                    {savingRequestId === selectedActivity.id ? 'Sending...' : actionLabel(selectedActivity)}
                   </Text>
                 </Pressable>
 
-                <Pressable
-                  style={styles.chatAction}
-                  onPress={() => {
-                    setSelectedActivity(null);
-                    router.push('/messages');
-                  }}
-                >
-                  <Ionicons name="chatbubble-ellipses-outline" size={19} color="#0F4C81" />
-                  <Text style={styles.chatActionText}>Open activity chat</Text>
-                </Pressable>
-              </>
+                {requestForActivity(selectedActivity.id)?.status === 'accepted' && (
+                  <Pressable
+                    style={styles.chatAction}
+                    onPress={() => {
+                      setSelectedActivity(null);
+                      router.push('/messages');
+                    }}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={19} color="#0F4C81" />
+                    <Text style={styles.chatActionText}>Open activity chat</Text>
+                  </Pressable>
+                )}
+              </ScrollView>
             )}
           </View>
         </View>
@@ -465,6 +734,8 @@ const styles = StyleSheet.create({
 
   imagePlaceholder: {
     width: 108,
+    height: 132,
+    flexShrink: 0,
     borderRadius: 16,
     backgroundColor: '#0EA5E9',
     alignItems: 'center',
@@ -556,9 +827,13 @@ const styles = StyleSheet.create({
   },
 
   detailSheet: {
+    maxHeight: '86%',
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+  },
+
+  detailContent: {
     padding: 24,
     paddingBottom: 34,
   },
@@ -666,9 +941,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  detailActionDisabled: {
+    backgroundColor: '#94A3B8',
+  },
+
   detailActionText: {
     color: '#FFFFFF',
     fontSize: 17,
+    fontWeight: '900',
+  },
+
+  deleteAction: {
+    marginTop: 18,
+    borderRadius: 22,
+    backgroundColor: '#FEE2E2',
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+
+  deleteActionText: {
+    color: '#B91C1C',
+    fontSize: 16,
     fontWeight: '900',
   },
 
@@ -686,6 +982,97 @@ const styles = StyleSheet.create({
   chatActionText: {
     color: '#0F4C81',
     fontSize: 16,
+    fontWeight: '900',
+  },
+
+  requestList: {
+    marginTop: 20,
+    gap: 10,
+  },
+
+  requestListTitle: {
+    color: '#071C4D',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+
+  emptyRequests: {
+    color: '#64748B',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  requestCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+  },
+
+  requestAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#03A63C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+
+  requestImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
+
+  requestInitial: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+
+  requestBody: {
+    flex: 1,
+  },
+
+  requestName: {
+    color: '#071C4D',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
+  requestMeta: {
+    marginTop: 2,
+    color: '#245B91',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  acceptButton: {
+    borderRadius: 14,
+    backgroundColor: '#03A63C',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+
+  acceptButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  denyButton: {
+    borderRadius: 14,
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+
+  denyButtonText: {
+    color: '#B91C1C',
+    fontSize: 12,
     fontWeight: '900',
   },
 });
