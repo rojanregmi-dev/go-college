@@ -1,4 +1,8 @@
-from fastapi import Depends, FastAPI
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import Depends, FastAPI, File, UploadFile
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -8,6 +12,11 @@ from .models import Activity, Availability, UserProfile
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="GO College API")
+
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 class AvailabilityCreate(BaseModel):
@@ -141,6 +150,19 @@ def update_profile(
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.post("/uploads")
+async def upload_file(file: UploadFile = File(...)):
+    original_name = file.filename or "upload"
+    extension = Path(original_name).suffix
+    safe_filename = f"{uuid4().hex}{extension}"
+    upload_path = UPLOAD_DIR / safe_filename
+
+    contents = await file.read()
+    upload_path.write_bytes(contents)
+
+    return {"url": f"/uploads/{safe_filename}"}
 
 
 @app.post("/availability")
