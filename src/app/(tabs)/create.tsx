@@ -67,7 +67,7 @@ export default function CreateScreen() {
       Alert.alert('Plan created', 'Your plan was added to the campus feed.');
       router.push('/');
     } catch (error) {
-      Alert.alert('Connection error', 'GO College could not create this plan.');
+      Alert.alert('Connection error', 'GO Discover could not create this plan.');
     } finally {
       setSaving(false);
     }
@@ -138,12 +138,31 @@ export default function CreateScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-      <Text style={styles.eyebrow}>CREATE PLAN</Text>
-      <Text style={styles.title}>Start something</Text>
-      <Text style={styles.subtitle}>Post a campus plan for now, later today, tonight, or a future time.</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.headingRow}>
+        <View style={styles.headingCopy}>
+          <Text style={styles.eyebrow}>CREATE PLAN</Text>
+          <Text style={styles.title}>Start something</Text>
+          <Text style={styles.subtitle}>Turn free time into a plan people can join.</Text>
+        </View>
+        <View style={styles.headingIcon}>
+          <Ionicons name="add" size={30} color="#FFFFFF" />
+        </View>
+      </View>
 
-      <Pressable style={styles.photoButton} onPress={handlePickPhoto}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Choose a photo for this plan"
+        disabled={uploadingPhoto || saving}
+        style={styles.photoButton}
+        onPress={handlePickPhoto}
+      >
         {photoUrl ? (
           <Image
             source={{ uri: `${API_BASE_URL}${photoUrl}` }}
@@ -234,7 +253,7 @@ export default function CreateScreen() {
         </Pressable>
       ))}
       {meetingLocation && (
-        <View style={styles.locationButton}>
+        <View style={[styles.locationButton, styles.confirmedLocation]}>
           <Ionicons name="checkmark-circle" size={20} color="#15803D" />
           <Text style={styles.locationText}>{meetingLocation.label}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Clear meeting location" hitSlop={10} disabled={saving} onPress={() => setMeetingLocation(null)}>
@@ -262,38 +281,54 @@ export default function CreateScreen() {
         <TextInput value={customTime} onChangeText={setCustomTime} placeholder="Example: Friday at 6 PM" placeholderTextColor="#94A3B8" style={styles.input} />
       )}
 
-      <Pressable onPress={handleCreatePlan} disabled={saving || findingLocation || uploadingPhoto} style={[styles.createButton, (saving || findingLocation || uploadingPhoto) && styles.createButtonDisabled]}>
-        <Text style={styles.createButtonText}>{saving ? 'Creating...' : 'Create plan'}</Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={handleCreatePlan}
+        disabled={saving || findingLocation || uploadingPhoto}
+        style={[styles.createButton, (saving || findingLocation || uploadingPhoto) && styles.createButtonDisabled]}
+      >
+        {saving ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <>
+            <Text style={styles.createButtonText}>Create plan</Text>
+            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+          </>
+        )}
       </Pressable>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F7FAF8' },
-  content: { paddingHorizontal: 24, paddingTop: 72, paddingBottom: 32 },
-  eyebrow: { fontSize: 12, fontWeight: '800', color: '#16A34A', letterSpacing: 1.5 },
-  title: { marginTop: 8, fontSize: 34, fontWeight: '900', color: '#0F172A' },
-  subtitle: { marginTop: 12, marginBottom: 24, fontSize: 16, lineHeight: 23, color: '#64748B' },
-  photoButton: { minHeight: 92, borderRadius: 20, borderWidth: 1, borderColor: '#B7E8F0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  photoPreview: { width: '100%', height: 150, borderRadius: 18 },
+  container: { flex: 1, backgroundColor: '#BFF7FA' },
+  content: { width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 64, paddingBottom: 52 },
+  headingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  headingCopy: { flex: 1 },
+  headingIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#049B43', alignItems: 'center', justifyContent: 'center', shadowColor: '#03606E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.16, shadowRadius: 10 },
+  eyebrow: { fontSize: 12, fontWeight: '900', color: '#04924A', letterSpacing: 1.5 },
+  title: { marginTop: 7, fontSize: 36, lineHeight: 42, fontWeight: '900', color: '#071C4D' },
+  subtitle: { marginTop: 5, fontSize: 17, lineHeight: 24, color: '#245B91', fontWeight: '700' },
+  photoButton: { minHeight: 108, marginTop: 24, borderRadius: 14, borderWidth: 1, borderColor: '#A3DDE5', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', gap: 8, overflow: 'hidden', shadowColor: '#03606E', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1, shadowRadius: 12 },
+  photoPreview: { width: '100%', height: 176 },
   photoButtonText: { color: '#0F4C81', fontSize: 16, fontWeight: '900' },
-  input: { marginTop: 14, backgroundColor: '#FFFFFF', borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, color: '#0F172A', fontWeight: '600' },
-  locationButton: { marginTop: 10, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  input: { marginTop: 12, backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#A3DDE5', paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, color: '#071C4D', fontWeight: '600' },
+  locationButton: { marginTop: 10, minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8, borderWidth: 1, borderColor: '#A3DDE5', backgroundColor: 'rgba(255,255,255,0.72)', paddingHorizontal: 13, paddingVertical: 10 },
+  confirmedLocation: { borderColor: '#049B43', backgroundColor: '#E4FDEB' },
   locationText: { flex: 1, color: '#0F4C81', fontSize: 15, lineHeight: 21, fontWeight: '600' },
-  addressRow: { marginTop: 10, flexDirection: 'row', borderWidth: 1, borderColor: '#B7E8F0', borderRadius: 8, backgroundColor: '#FFFFFF' },
+  addressRow: { marginTop: 10, flexDirection: 'row', borderWidth: 1, borderColor: '#A3DDE5', borderRadius: 8, backgroundColor: '#FFFFFF' },
   addressInput: { flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 14, color: '#0F172A', fontSize: 15 },
   searchAddressButton: { width: 48, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
   locationStatus: { marginTop: 12, color: '#475569', fontSize: 14 },
   locationError: { marginTop: 10, color: '#B91C1C', fontSize: 14, lineHeight: 20 },
   descriptionInput: { minHeight: 96, textAlignVertical: 'top' },
-  sectionLabel: { marginTop: 24, marginBottom: 12, fontSize: 15, fontWeight: '900', color: '#0F172A' },
+  sectionLabel: { marginTop: 24, marginBottom: 10, fontSize: 15, fontWeight: '900', color: '#071C4D' },
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  timeOption: { paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
-  timeOptionSelected: { backgroundColor: '#DCFCE7', borderColor: '#16A34A' },
-  timeText: { color: '#334155', fontSize: 15, fontWeight: '800' },
-  timeTextSelected: { color: '#15803D' },
-  createButton: { marginTop: 28, backgroundColor: '#2563EB', borderRadius: 18, paddingVertical: 18, alignItems: 'center' },
+  timeOption: { minHeight: 44, paddingVertical: 11, paddingHorizontal: 14, backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: 8, borderWidth: 1, borderColor: '#A3DDE5', justifyContent: 'center' },
+  timeOptionSelected: { backgroundColor: '#64F58C', borderColor: '#049B43' },
+  timeText: { color: '#245B91', fontSize: 15, fontWeight: '800' },
+  timeTextSelected: { color: '#071C4D' },
+  createButton: { marginTop: 28, minHeight: 56, backgroundColor: '#049B43', borderRadius: 8, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, shadowColor: '#03606E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.16, shadowRadius: 12 },
   createButtonDisabled: { opacity: 0.65 },
   createButtonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
 });

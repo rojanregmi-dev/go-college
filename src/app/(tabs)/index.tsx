@@ -283,7 +283,13 @@ export default function HomeScreen() {
             <Text style={styles.brandSub}>DISCOVER</Text>
           </View>
 
-          <View style={styles.profileDot}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open profile"
+            hitSlop={8}
+            onPress={() => router.push('/profile')}
+            style={styles.profileDot}
+          >
             {profile?.photo_url ? (
               <Image
                 source={{ uri: `${API_BASE_URL}${profile.photo_url}` }}
@@ -295,7 +301,7 @@ export default function HomeScreen() {
                 {profile?.username ? profile.username[0].toUpperCase() : 'R'}
               </Text>
             )}
-          </View>
+          </Pressable>
         </View>
 
         <Text style={styles.title}>
@@ -404,6 +410,16 @@ export default function HomeScreen() {
           <Text style={styles.emptyFeed}>
             {nearby ? `No plans within ${radiusMiles} miles.` : 'No plans found.'}
           </Text>
+        )}
+
+        {!loading && !errorMessage && visibleActivities.length > 0 && (
+          <View style={styles.feedHeading}>
+            <Text style={styles.feedTitle}>{nearby ? 'Plans near you' : 'Discover plans'}</Text>
+            <View style={styles.livePill}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>{visibleActivities.length} live</Text>
+            </View>
+          </View>
         )}
 
         <View style={styles.feed}>
@@ -562,7 +578,7 @@ export default function HomeScreen() {
 
                         <View style={styles.requestBody}>
                           <Text style={styles.requestName}>{request.requester_name}</Text>
-                          <Text style={styles.requestMeta}>{request.requester_code}</Text>
+                          <Text style={styles.requestMeta}>Wants to join this plan</Text>
                         </View>
 
                         <Pressable
@@ -647,9 +663,12 @@ const styles = StyleSheet.create({
   },
 
   content: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
     paddingHorizontal: 18,
     paddingTop: 56,
-    paddingBottom: 32,
+    paddingBottom: 48,
   },
 
   topRow: {
@@ -683,6 +702,10 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#FFFFFF',
     overflow: 'hidden',
+    shadowColor: '#03606E',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.18,
+    shadowRadius: 9,
   },
 
   profileImage: {
@@ -795,6 +818,43 @@ const styles = StyleSheet.create({
   locationError: { marginTop: 8, color: '#B91C1C', fontSize: 14, lineHeight: 20 },
   emptyFeed: { paddingVertical: 24, color: '#073B66', fontSize: 16, textAlign: 'center' },
 
+  feedHeading: {
+    marginTop: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  feedTitle: {
+    color: '#071C4D',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+
+  livePill: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    paddingHorizontal: 10,
+  },
+
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#049B43',
+  },
+
+  liveText: {
+    color: '#0F4C81',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
   statusText: {
     color: '#475569',
     fontSize: 15,
@@ -808,7 +868,7 @@ const styles = StyleSheet.create({
   },
 
   feed: {
-    marginTop: 16,
+    marginTop: 12,
     gap: 12,
   },
 
@@ -816,7 +876,9 @@ const styles = StyleSheet.create({
     minHeight: 150,
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#A3DDE5',
     padding: 10,
     gap: 12,
     shadowColor: '#03606E',
@@ -829,7 +891,7 @@ const styles = StyleSheet.create({
     width: 108,
     height: 132,
     flexShrink: 0,
-    borderRadius: 16,
+    borderRadius: 10,
     backgroundColor: '#0EA5E9',
     alignItems: 'center',
     justifyContent: 'center',
