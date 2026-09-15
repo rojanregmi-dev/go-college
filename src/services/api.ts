@@ -33,6 +33,8 @@ export type CampusActivity = {
   creator_code: string;
   creator_photo_url: string;
   max_people: number;
+  accepted_count: number;
+  spots_left: number | null;
   interested_count: number;
 };
 
@@ -62,6 +64,21 @@ export type AuthInput = {
   user_id: string;
   password: string;
   username?: string;
+};
+
+export type JoinRequest = {
+  id: number;
+  activity_id: number;
+  activity_title: string;
+  activity_category: string;
+  activity_period: string;
+  activity_location: string;
+  requester_code: string;
+  requester_name: string;
+  requester_photo_url: string;
+  creator_code: string;
+  status: 'pending' | 'accepted' | 'denied';
+  created_at: string;
 };
 
 export async function saveAvailability(period: string) {
@@ -101,6 +118,23 @@ export async function createActivity(activity: NewCampusActivity) {
 
   if (!response.ok) {
     throw new Error('Failed to create activity');
+  }
+
+  return response.json();
+}
+
+export async function deleteActivity(
+  activityId: number,
+  creatorCode = getCurrentUserCode()
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/activities/${activityId}?creator_code=${encodeURIComponent(creatorCode)}`,
+    { method: 'DELETE' }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail || 'Could not delete post');
   }
 
   return response.json();
@@ -168,6 +202,95 @@ export async function createUser(auth: AuthInput): Promise<UserProfile> {
   const profile = await response.json();
   setCurrentUserCode(profile.user_code);
   return profile;
+}
+
+
+export async function createJoinRequest(
+  activityId: number,
+  requesterCode = getCurrentUserCode()
+): Promise<JoinRequest> {
+  const response = await fetch(`${API_BASE_URL}/join-requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      activity_id: activityId,
+      requester_code: requesterCode,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail || 'Could not send request');
+  }
+
+  return response.json();
+}
+
+export async function getIncomingJoinRequests(
+  creatorCode = getCurrentUserCode()
+): Promise<JoinRequest[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/join-requests/incoming/${encodeURIComponent(creatorCode)}`
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to load incoming requests');
+  }
+
+  return response.json();
+}
+
+export async function getOutgoingJoinRequests(
+  requesterCode = getCurrentUserCode()
+): Promise<JoinRequest[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/join-requests/outgoing/${encodeURIComponent(requesterCode)}`
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to load outgoing requests');
+  }
+
+  return response.json();
+}
+
+export async function updateJoinRequestStatus(
+  requestId: number,
+  status: 'accepted' | 'denied',
+  creatorCode = getCurrentUserCode()
+): Promise<JoinRequest> {
+  const response = await fetch(`${API_BASE_URL}/join-requests/${requestId}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      creator_code: creatorCode,
+      status,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail || 'Could not update request');
+  }
+
+  return response.json();
+}
+
+export async function cancelJoinRequest(
+  requestId: number,
+  requesterCode = getCurrentUserCode()
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/join-requests/${requestId}?requester_code=${encodeURIComponent(requesterCode)}`,
+    { method: 'DELETE' }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail || 'Could not cancel request');
+  }
+
+  return response.json();
 }
 
 
