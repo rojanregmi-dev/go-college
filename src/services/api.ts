@@ -81,6 +81,16 @@ export type JoinRequest = {
   created_at: string;
 };
 
+export type ChatMessage = {
+  id: number;
+  join_request_id: number;
+  activity_id: number;
+  sender_code: string;
+  recipient_code: string;
+  body: string;
+  created_at: string;
+};
+
 export async function saveAvailability(period: string) {
   const response = await fetch(`${API_BASE_URL}/availability`, {
     method: 'POST',
@@ -293,6 +303,40 @@ export async function cancelJoinRequest(
   return response.json();
 }
 
+export async function getMessages(
+  requestId: number,
+  userCode = getCurrentUserCode()
+): Promise<ChatMessage[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/join-requests/${requestId}/messages?user_code=${encodeURIComponent(userCode)}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail || 'Could not load messages');
+  }
+
+  return response.json();
+}
+
+export async function sendMessage(
+  requestId: number,
+  body: string,
+  senderCode = getCurrentUserCode()
+): Promise<ChatMessage> {
+  const response = await fetch(`${API_BASE_URL}/join-requests/${requestId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sender_code: senderCode, body }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail || 'Could not send message');
+  }
+
+  return response.json();
+}
 
 export async function uploadFile(
   uri: string,
