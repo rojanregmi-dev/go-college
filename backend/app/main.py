@@ -359,88 +359,6 @@ def seed_default_profile(db: Session):
     return seed_profile(db, "rojan-txst")
 
 
-def seed_demo_activities(db: Session):
-    existing_activity = db.query(Activity).first()
-
-    if existing_activity:
-        demo_updates = {
-            "Basketball at 6 PM": {
-                "group_name": "Basketball Runs",
-                "category": "Activity",
-                "description": "Pickup basketball run at the rec. Bring shoes and water.",
-                "creator_code": "demo-campus",
-                "max_people": 8,
-            },
-            "Calc Study": {
-                "group_name": "Alex",
-                "category": "Meet",
-                "description": "Looking for a study partner for calc review.",
-                "creator_code": "alex-txst",
-                "max_people": 2,
-            },
-            "Coffee after class": {
-                "group_name": "Maya",
-                "category": "Meet",
-                "description": "Quick coffee and conversation between classes.",
-                "creator_code": "maya-txst",
-                "max_people": 2,
-            },
-        }
-
-        for title, values in demo_updates.items():
-            record = db.query(Activity).filter(Activity.title == title).first()
-
-            if record:
-                record.group_name = values["group_name"]
-                record.category = values["category"]
-                record.description = values["description"]
-                record.creator_code = values["creator_code"]
-                record.max_people = values["max_people"]
-
-        db.commit()
-
-        return
-
-    activities = [
-        Activity(
-            title="Basketball at 6 PM",
-            group_name="Basketball Runs",
-            period="Tonight",
-            location="Student Rec Center",
-            category="Activity",
-            description="Pickup basketball run at the rec. Bring shoes and water.",
-            creator_code="demo-campus",
-            max_people=8,
-            interested_count=4,
-        ),
-        Activity(
-            title="Calc Study",
-            group_name="Alex",
-            period="Tonight",
-            location="Alkek Library",
-            category="Meet",
-            description="Looking for a study partner for calc review.",
-            creator_code="alex-txst",
-            max_people=2,
-            interested_count=3,
-        ),
-        Activity(
-            title="Coffee after class",
-            group_name="Maya",
-            period="Now",
-            location="LBJ Student Center",
-            category="Meet",
-            description="Quick coffee and conversation between classes.",
-            creator_code="maya-txst",
-            max_people=2,
-            interested_count=2,
-        ),
-    ]
-
-    db.add_all(activities)
-    db.commit()
-
-
 @app.get("/")
 def root():
     return {"message": "GO College backend is running"}
@@ -643,11 +561,18 @@ def create_activity(
 
 @app.get("/activities")
 def get_activities(db: Session = Depends(get_db)):
-    seed_demo_activities(db)
-
     records = db.query(Activity).all()
+    sample_posts = {
+        ("Basketball at 6 PM", "demo-campus"),
+        ("Calc Study", "alex-txst"),
+        ("Coffee after class", "maya-txst"),
+    }
 
-    return [activity_response(record, db) for record in records]
+    return [
+        activity_response(record, db)
+        for record in records
+        if (record.title, record.creator_code) not in sample_posts
+    ]
 
 
 @app.delete("/activities/{activity_id}")

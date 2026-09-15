@@ -407,9 +407,17 @@ export default function HomeScreen() {
         )}
 
         {!loading && !errorMessage && visibleActivities.length === 0 && (!nearby || validRadius) && (
-          <Text style={styles.emptyFeed}>
-            {nearby ? `No plans within ${radiusMiles} miles.` : 'No plans found.'}
-          </Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyFeed}>
+              {nearby ? `No plans within ${radiusMiles} miles.` : 'No plans yet.'}
+            </Text>
+            {!nearby && (
+              <Pressable onPress={() => router.push('/create')} style={styles.emptyAction}>
+                <Ionicons name="add" size={20} color="#FFFFFF" />
+                <Text style={styles.emptyActionText}>Create a plan</Text>
+              </Pressable>
+            )}
+          </View>
         )}
 
         {!loading && !errorMessage && visibleActivities.length > 0 && (
@@ -816,7 +824,10 @@ const styles = StyleSheet.create({
   radiusInput: { width: 64, height: 44, borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#B7E8F0', paddingHorizontal: 8, color: '#073B66', fontSize: 16, textAlign: 'center' },
   locateButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   locationError: { marginTop: 8, color: '#B91C1C', fontSize: 14, lineHeight: 20 },
-  emptyFeed: { paddingVertical: 24, color: '#073B66', fontSize: 16, textAlign: 'center' },
+  emptyState: { alignItems: 'center', paddingVertical: 24, gap: 12 },
+  emptyFeed: { color: '#073B66', fontSize: 16, textAlign: 'center' },
+  emptyAction: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#049B43', paddingHorizontal: 18, paddingVertical: 11, borderRadius: 8 },
+  emptyActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
 
   feedHeading: {
     marginTop: 22,
