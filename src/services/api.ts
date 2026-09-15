@@ -1,4 +1,8 @@
-export const API_BASE_URL = 'http://' + '10.43.56.78:8000';
+import Constants from 'expo-constants';
+
+const expoHost = Constants.expoConfig?.hostUri?.split(':')[0];
+
+export const API_BASE_URL = `http://${expoHost ?? '10.43.56.78'}:8000`;
 
 export type CampusActivity = {
   id: number;
