@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
-from .models import Activity, Availability
+from .models import Activity, Availability, UserProfile
 
 Base.metadata.create_all(bind=engine)
 
@@ -25,6 +25,12 @@ class ActivityCreate(BaseModel):
     interested_count: int = 1
 
 
+class ProfileUpdate(BaseModel):
+    username: str
+    bio: str = ""
+    photo_url: str = ""
+
+
 def get_db():
     db = SessionLocal()
 
@@ -32,6 +38,26 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def seed_default_profile(db: Session):
+    existing_profile = db.query(UserProfile).first()
+
+    if existing_profile:
+        return existing_profile
+
+    profile = UserProfile(
+        username="Rojan",
+        user_code="rojan-txst",
+        bio="Down for study sessions, gym runs, and quick campus plans.",
+        photo_url="",
+    )
+
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+
+    return profile
 
 
 def seed_demo_activities(db: Session):
@@ -74,6 +100,42 @@ def seed_demo_activities(db: Session):
 @app.get("/")
 def root():
     return {"message": "GO College backend is running"}
+
+
+@app.get("/profile")
+def get_profile(db: Session = Depends(get_db)):
+    profile = seed_default_profile(db)
+
+    return {
+        "id": profile.id,
+        "username": profile.username,
+        "user_code": profile.user_code,
+        "bio": profile.bio,
+        "photo_url": profile.photo_url,
+    }
+
+
+@app.put("/profile")
+def update_profile(
+    profile_update: ProfileUpdate,
+    db: Session = Depends(get_db),
+):
+    profile = seed_default_profile(db)
+
+    profile.username = profile_update.username
+    profile.bio = profile_update.bio
+    profile.photo_url = profile_update.photo_url
+
+    db.commit()
+    db.refresh(profile)
+
+    return {
+        "id": profile.id,
+        "username": profile.username,
+        "user_code": profile.user_code,
+        "bio": profile.bio,
+        "photo_url": profile.photo_url,
+    }
 
 
 @app.get("/health")

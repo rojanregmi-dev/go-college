@@ -22,3 +22,14 @@ class Activity(Base):
     location = Column(String, nullable=False)
     category = Column(String, nullable=False)
     interested_count = Column(Integer, default=0)
+
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, nullable=False)
+    user_code = Column(String, nullable=False, unique=True)
+    bio = Column(String, default="")
+    photo_url = Column(String, default="")
