@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Column, Integer, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 
 from .database import Base
 
@@ -40,3 +42,16 @@ class UserProfile(Base):
     photo_url = Column(String, default="")
     password_hash = Column(String, default="")
     password_salt = Column(String, default="")
+
+
+class JoinRequest(Base):
+    __tablename__ = "join_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    activity_id = Column(Integer, nullable=False, index=True)
+    requester_code = Column(String, nullable=False, index=True)
+    requester_name = Column(String, nullable=False)
+    requester_photo_url = Column(String, default="")
+    creator_code = Column(String, nullable=False, index=True)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)

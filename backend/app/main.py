@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
-from .models import Activity, Availability, UserProfile
+from .models import Activity, Availability, JoinRequest, UserProfile
 
 Base.metadata.create_all(bind=engine)
 
@@ -101,6 +101,16 @@ class AuthRequest(BaseModel):
     username: str = ""
 
 
+class JoinRequestCreate(BaseModel):
+    activity_id: int
+    requester_code: str
+
+
+class JoinRequestStatusUpdate(BaseModel):
+    creator_code: str
+    status: str
+
+
 def get_db():
     db = SessionLocal()
 
@@ -144,6 +154,76 @@ def profile_response(profile: UserProfile):
         "user_code": profile.user_code,
         "bio": profile.bio,
         "photo_url": profile.photo_url,
+    }
+
+
+def join_request_response(request: JoinRequest, activity: Activity):
+    return {
+        "id": request.id,
+        "activity_id": request.activity_id,
+        "activity_title": activity.title,
+        "activity_category": activity.category,
+        "activity_period": activity.period,
+        "activity_location": activity.location,
+        "requester_code": request.requester_code,
+        "requester_name": request.requester_name,
+        "requester_photo_url": request.requester_photo_url,
+        "creator_code": request.creator_code,
+        "status": request.status,
+        "created_at": request.created_at.isoformat() if request.created_at else "",
+    }
+
+
+def get_activity_or_404(db: Session, activity_id: int):
+    activity = db.query(Activity).filter(Activity.id == activity_id).first()
+
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    return activity
+
+
+def count_accepted_requests(db: Session, activity_id: int):
+    return (
+        db.query(JoinRequest)
+        .filter(
+            JoinRequest.activity_id == activity_id,
+            JoinRequest.status == "accepted",
+        )
+        .count()
+    )
+
+
+def has_capacity(db: Session, activity: Activity):
+    if not activity.max_people:
+        return True
+
+    accepted_count = count_accepted_requests(db, activity.id)
+    return accepted_count < activity.max_people
+
+
+def activity_response(activity: Activity, db: Session):
+    accepted_count = count_accepted_requests(db, activity.id)
+    spots_left = None
+
+    if activity.max_people:
+        spots_left = max(activity.max_people - accepted_count, 0)
+
+    return {
+        "id": activity.id,
+        "title": activity.title,
+        "group_name": activity.group_name,
+        "period": activity.period,
+        "location": activity.location,
+        "category": activity.category,
+        "description": activity.description,
+        "photo_url": activity.photo_url,
+        "creator_code": activity.creator_code,
+        "creator_photo_url": activity.creator_photo_url,
+        "max_people": activity.max_people,
+        "accepted_count": accepted_count,
+        "spots_left": spots_left,
+        "interested_count": activity.interested_count,
     }
 
 
@@ -458,20 +538,7 @@ def create_activity(
     db.commit()
     db.refresh(record)
 
-    return {
-        "id": record.id,
-        "title": record.title,
-        "group_name": record.group_name,
-        "period": record.period,
-        "location": record.location,
-        "category": record.category,
-        "description": record.description,
-        "photo_url": record.photo_url,
-        "creator_code": record.creator_code,
-        "creator_photo_url": record.creator_photo_url,
-        "max_people": record.max_people,
-        "interested_count": record.interested_count,
-    }
+    return activity_response(record, db)
 
 
 @app.get("/activities")
@@ -480,20 +547,116 @@ def get_activities(db: Session = Depends(get_db)):
 
     records = db.query(Activity).all()
 
+    return [activity_response(record, db) for record in records]
+
+
+@app.post("/join-requests")
+def create_join_request(
+    join_request: JoinRequestCreate,
+    db: Session = Depends(get_db),
+):
+    activity = get_activity_or_404(db, join_request.activity_id)
+    requester = seed_profile(db, join_request.requester_code)
+
+    if requester.user_code == activity.creator_code:
+        raise HTTPException(status_code=400, detail="You cannot request your own post")
+
+    existing_request = (
+        db.query(JoinRequest)
+        .filter(
+            JoinRequest.activity_id == activity.id,
+            JoinRequest.requester_code == requester.user_code,
+        )
+        .first()
+    )
+
+    if existing_request:
+        if existing_request.status == "denied":
+            existing_request.status = "pending"
+            db.commit()
+            db.refresh(existing_request)
+
+        return join_request_response(existing_request, activity)
+
+    record = JoinRequest(
+        activity_id=activity.id,
+        requester_code=requester.user_code,
+        requester_name=requester.username,
+        requester_photo_url=requester.photo_url,
+        creator_code=activity.creator_code,
+        status="pending",
+    )
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return join_request_response(record, activity)
+
+
+@app.get("/join-requests/incoming/{creator_code}")
+def get_incoming_join_requests(
+    creator_code: str,
+    db: Session = Depends(get_db),
+):
+    clean_code = normalize_user_code(creator_code)
+    records = (
+        db.query(JoinRequest)
+        .filter(JoinRequest.creator_code == clean_code)
+        .all()
+    )
+
     return [
-        {
-            "id": record.id,
-            "title": record.title,
-            "group_name": record.group_name,
-            "period": record.period,
-            "location": record.location,
-            "category": record.category,
-            "description": record.description,
-            "photo_url": record.photo_url,
-            "creator_code": record.creator_code,
-            "creator_photo_url": record.creator_photo_url,
-            "max_people": record.max_people,
-            "interested_count": record.interested_count,
-        }
+        join_request_response(record, get_activity_or_404(db, record.activity_id))
         for record in records
     ]
+
+
+@app.get("/join-requests/outgoing/{requester_code}")
+def get_outgoing_join_requests(
+    requester_code: str,
+    db: Session = Depends(get_db),
+):
+    clean_code = normalize_user_code(requester_code)
+    records = (
+        db.query(JoinRequest)
+        .filter(JoinRequest.requester_code == clean_code)
+        .all()
+    )
+
+    return [
+        join_request_response(record, get_activity_or_404(db, record.activity_id))
+        for record in records
+    ]
+
+
+@app.put("/join-requests/{request_id}/status")
+def update_join_request_status(
+    request_id: int,
+    status_update: JoinRequestStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    clean_creator_code = normalize_user_code(status_update.creator_code)
+    next_status = status_update.status.strip().lower()
+
+    if next_status not in {"accepted", "denied"}:
+        raise HTTPException(status_code=400, detail="Status must be accepted or denied")
+
+    record = db.query(JoinRequest).filter(JoinRequest.id == request_id).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Join request not found")
+
+    activity = get_activity_or_404(db, record.activity_id)
+
+    if record.creator_code != clean_creator_code:
+        raise HTTPException(status_code=403, detail="Only the post creator can update this request")
+
+    if next_status == "accepted" and record.status != "accepted" and not has_capacity(db, activity):
+        raise HTTPException(status_code=400, detail="This post is already full")
+
+    record.status = next_status
+    db.commit()
+    db.refresh(record)
+
+    return join_request_response(record, activity)
