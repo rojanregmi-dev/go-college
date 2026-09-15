@@ -23,6 +23,14 @@ export type NewCampusActivity = {
   interested_count: number;
 };
 
+export type UserProfile = {
+  id: number;
+  username: string;
+  user_code: string;
+  bio: string;
+  photo_url: string;
+};
+
 export async function saveAvailability(period: string) {
   const response = await fetch(`${API_BASE_URL}/availability`, {
     method: 'POST',
@@ -60,6 +68,31 @@ export async function createActivity(activity: NewCampusActivity) {
 
   if (!response.ok) {
     throw new Error('Failed to create activity');
+  }
+
+  return response.json();
+}
+
+
+export async function getProfile(): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/profile`);
+
+  if (!response.ok) {
+    throw new Error('Failed to load profile');
+  }
+
+  return response.json();
+}
+
+export async function updateProfile(profile: Pick<UserProfile, 'username' | 'bio' | 'photo_url'>) {
+  const response = await fetch(`${API_BASE_URL}/profile`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(profile),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to update profile');
   }
 
   return response.json();
