@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
-from .models import Activity, Availability, JoinRequest, UserProfile
+from .models import Activity, Availability, JoinRequest, Message, UserProfile
 
 Base.metadata.create_all(bind=engine)
 
@@ -111,6 +111,11 @@ class JoinRequestStatusUpdate(BaseModel):
     status: str
 
 
+class MessageCreate(BaseModel):
+    sender_code: str
+    body: str
+
+
 def get_db():
     db = SessionLocal()
 
@@ -171,6 +176,18 @@ def join_request_response(request: JoinRequest, activity: Activity):
         "creator_code": request.creator_code,
         "status": request.status,
         "created_at": request.created_at.isoformat() if request.created_at else "",
+    }
+
+
+def message_response(message: Message):
+    return {
+        "id": message.id,
+        "join_request_id": message.join_request_id,
+        "activity_id": message.activity_id,
+        "sender_code": message.sender_code,
+        "recipient_code": message.recipient_code,
+        "body": message.body,
+        "created_at": message.created_at.isoformat() if message.created_at else "",
     }
 
 
@@ -563,6 +580,7 @@ def delete_activity(
         raise HTTPException(status_code=403, detail="Only the post creator can delete this post")
 
     db.query(JoinRequest).filter(JoinRequest.activity_id == activity.id).delete()
+    db.query(Message).filter(Message.activity_id == activity.id).delete()
     db.delete(activity)
     db.commit()
 
@@ -703,3 +721,80 @@ def cancel_join_request(
     db.commit()
 
     return {"deleted": True, "request_id": request_id}
+
+
+def get_accepted_request(db: Session, request_id: int):
+    record = db.query(JoinRequest).filter(JoinRequest.id == request_id).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Join request not found")
+
+    if record.status != "accepted":
+        raise HTTPException(status_code=403, detail="Chat opens after the request is accepted")
+
+    activity = get_activity_or_404(db, record.activity_id)
+    return record, activity
+
+
+def ensure_message_member(request: JoinRequest, user_code: str):
+    clean_code = normalize_user_code(user_code)
+
+    if clean_code not in {request.creator_code, request.requester_code}:
+        raise HTTPException(status_code=403, detail="You are not part of this chat")
+
+    return clean_code
+
+
+@app.get("/join-requests/{request_id}/messages")
+def get_messages(
+    request_id: int,
+    user_code: str,
+    db: Session = Depends(get_db),
+):
+    request, _ = get_accepted_request(db, request_id)
+    ensure_message_member(request, user_code)
+
+    records = (
+        db.query(Message)
+        .filter(Message.join_request_id == request.id)
+        .order_by(Message.created_at, Message.id)
+        .all()
+    )
+
+    return [message_response(record) for record in records]
+
+
+@app.post("/join-requests/{request_id}/messages")
+def create_message(
+    request_id: int,
+    message: MessageCreate,
+    db: Session = Depends(get_db),
+):
+    request, _ = get_accepted_request(db, request_id)
+    sender_code = ensure_message_member(request, message.sender_code)
+    body = message.body.strip()
+
+    if not body:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    if len(body) > 1000:
+        raise HTTPException(status_code=400, detail="Message is too long")
+
+    recipient_code = (
+        request.requester_code
+        if sender_code == request.creator_code
+        else request.creator_code
+    )
+    record = Message(
+        join_request_id=request.id,
+        activity_id=request.activity_id,
+        sender_code=sender_code,
+        recipient_code=recipient_code,
+        body=body,
+    )
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return message_response(record)

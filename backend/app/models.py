@@ -55,3 +55,15 @@ class JoinRequest(Base):
     creator_code = Column(String, nullable=False, index=True)
     status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    join_request_id = Column(Integer, nullable=False, index=True)
+    activity_id = Column(Integer, nullable=False, index=True)
+    sender_code = Column(String, nullable=False, index=True)
+    recipient_code = Column(String, nullable=False, index=True)
+    body = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
