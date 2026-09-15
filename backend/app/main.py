@@ -550,6 +550,25 @@ def get_activities(db: Session = Depends(get_db)):
     return [activity_response(record, db) for record in records]
 
 
+@app.delete("/activities/{activity_id}")
+def delete_activity(
+    activity_id: int,
+    creator_code: str,
+    db: Session = Depends(get_db),
+):
+    clean_creator_code = normalize_user_code(creator_code)
+    activity = get_activity_or_404(db, activity_id)
+
+    if activity.creator_code != clean_creator_code:
+        raise HTTPException(status_code=403, detail="Only the post creator can delete this post")
+
+    db.query(JoinRequest).filter(JoinRequest.activity_id == activity.id).delete()
+    db.delete(activity)
+    db.commit()
+
+    return {"deleted": True, "activity_id": activity_id}
+
+
 @app.post("/join-requests")
 def create_join_request(
     join_request: JoinRequestCreate,
@@ -660,3 +679,27 @@ def update_join_request_status(
     db.refresh(record)
 
     return join_request_response(record, activity)
+
+
+@app.delete("/join-requests/{request_id}")
+def cancel_join_request(
+    request_id: int,
+    requester_code: str,
+    db: Session = Depends(get_db),
+):
+    clean_requester_code = normalize_user_code(requester_code)
+    record = db.query(JoinRequest).filter(JoinRequest.id == request_id).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Join request not found")
+
+    if record.requester_code != clean_requester_code:
+        raise HTTPException(status_code=403, detail="Only the requester can cancel this request")
+
+    if record.status == "accepted":
+        raise HTTPException(status_code=400, detail="Accepted requests cannot be cancelled")
+
+    db.delete(record)
+    db.commit()
+
+    return {"deleted": True, "request_id": request_id}
