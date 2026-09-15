@@ -195,6 +195,14 @@ export default function HomeScreen() {
 
       const activityData = await getActivities();
       setActivities(activityData);
+
+      const updatedActivity = activityData.find(
+        (activity) => activity.id === updatedRequest.activity_id
+      );
+
+      if (updatedActivity && isFull(updatedActivity)) {
+        setSelectedActivity(null);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update request.';
       Alert.alert('Request failed', message);
@@ -228,14 +236,8 @@ export default function HomeScreen() {
   const visibleActivities = activities.filter((activity) => {
     const matchesCategory =
       selectedCategory === 'All' || activity.category.toLowerCase() === selectedCategory.toLowerCase();
-    const request = requestForActivity(activity.id);
-    const viewerIsCreator = isCreator(activity);
-    const viewerHasAcceptedRequest = request?.status === 'accepted';
-    const viewerHasPendingRequest = request?.status === 'pending';
-    const shouldShowFull =
-      !isFull(activity) || viewerIsCreator || viewerHasAcceptedRequest || viewerHasPendingRequest;
 
-    return matchesCategory && shouldShowFull;
+    return matchesCategory && !isFull(activity);
   });
 
   return (
