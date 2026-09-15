@@ -23,6 +23,7 @@ def ensure_activity_columns():
     required_columns = {
         "description": "VARCHAR DEFAULT ''",
         "photo_url": "VARCHAR DEFAULT ''",
+        "creator_code": "VARCHAR DEFAULT ''",
         "creator_photo_url": "VARCHAR DEFAULT ''",
         "max_people": "INTEGER DEFAULT 0",
     }
@@ -57,6 +58,7 @@ class ActivityCreate(BaseModel):
     category: str
     description: str = ""
     photo_url: str = ""
+    creator_code: str = "rojan-txst"
     creator_photo_url: str = ""
     max_people: int = 0
     interested_count: int = 1
@@ -77,16 +79,32 @@ def get_db():
         db.close()
 
 
-def seed_default_profile(db: Session):
-    existing_profile = db.query(UserProfile).first()
+def normalize_user_code(user_code: str):
+    clean_code = user_code.strip().lower()
+
+    if clean_code:
+        return clean_code
+
+    return "rojan-txst"
+
+
+def seed_profile(db: Session, user_code: str = "rojan-txst"):
+    clean_code = normalize_user_code(user_code)
+    existing_profile = (
+        db.query(UserProfile)
+        .filter(UserProfile.user_code == clean_code)
+        .first()
+    )
 
     if existing_profile:
         return existing_profile
 
+    username = clean_code.split("-")[0].replace(".", " ").title() or "Student"
+
     profile = UserProfile(
-        username="Rojan",
-        user_code="rojan-txst",
-        bio="Down for study sessions, gym runs, and quick campus plans.",
+        username=username,
+        user_code=clean_code,
+        bio="Down for study sessions, quick campus plans, and meeting people.",
         photo_url="",
     )
 
@@ -95,6 +113,10 @@ def seed_default_profile(db: Session):
     db.refresh(profile)
 
     return profile
+
+
+def seed_default_profile(db: Session):
+    return seed_profile(db, "rojan-txst")
 
 
 def seed_demo_activities(db: Session):
@@ -106,18 +128,21 @@ def seed_demo_activities(db: Session):
                 "group_name": "Basketball Runs",
                 "category": "Activity",
                 "description": "Pickup basketball run at the rec. Bring shoes and water.",
+                "creator_code": "demo-campus",
                 "max_people": 8,
             },
             "Calc Study": {
                 "group_name": "Alex",
                 "category": "Meet",
                 "description": "Looking for a study partner for calc review.",
+                "creator_code": "alex-txst",
                 "max_people": 2,
             },
             "Coffee after class": {
                 "group_name": "Maya",
                 "category": "Meet",
                 "description": "Quick coffee and conversation between classes.",
+                "creator_code": "maya-txst",
                 "max_people": 2,
             },
         }
@@ -129,6 +154,7 @@ def seed_demo_activities(db: Session):
                 record.group_name = values["group_name"]
                 record.category = values["category"]
                 record.description = values["description"]
+                record.creator_code = values["creator_code"]
                 record.max_people = values["max_people"]
 
         db.commit()
@@ -143,6 +169,7 @@ def seed_demo_activities(db: Session):
             location="Student Rec Center",
             category="Activity",
             description="Pickup basketball run at the rec. Bring shoes and water.",
+            creator_code="demo-campus",
             max_people=8,
             interested_count=4,
         ),
@@ -153,6 +180,7 @@ def seed_demo_activities(db: Session):
             location="Alkek Library",
             category="Meet",
             description="Looking for a study partner for calc review.",
+            creator_code="alex-txst",
             max_people=2,
             interested_count=3,
         ),
@@ -163,6 +191,7 @@ def seed_demo_activities(db: Session):
             location="LBJ Student Center",
             category="Meet",
             description="Quick coffee and conversation between classes.",
+            creator_code="maya-txst",
             max_people=2,
             interested_count=2,
         ),
@@ -190,12 +219,52 @@ def get_profile(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/profile/{user_code}")
+def get_profile_by_code(
+    user_code: str,
+    db: Session = Depends(get_db),
+):
+    profile = seed_profile(db, user_code)
+
+    return {
+        "id": profile.id,
+        "username": profile.username,
+        "user_code": profile.user_code,
+        "bio": profile.bio,
+        "photo_url": profile.photo_url,
+    }
+
+
 @app.put("/profile")
 def update_profile(
     profile_update: ProfileUpdate,
     db: Session = Depends(get_db),
 ):
     profile = seed_default_profile(db)
+
+    profile.username = profile_update.username
+    profile.bio = profile_update.bio
+    profile.photo_url = profile_update.photo_url
+
+    db.commit()
+    db.refresh(profile)
+
+    return {
+        "id": profile.id,
+        "username": profile.username,
+        "user_code": profile.user_code,
+        "bio": profile.bio,
+        "photo_url": profile.photo_url,
+    }
+
+
+@app.put("/profile/{user_code}")
+def update_profile_by_code(
+    user_code: str,
+    profile_update: ProfileUpdate,
+    db: Session = Depends(get_db),
+):
+    profile = seed_profile(db, user_code)
 
     profile.username = profile_update.username
     profile.bio = profile_update.bio
@@ -283,7 +352,7 @@ def create_activity(
     activity: ActivityCreate,
     db: Session = Depends(get_db),
 ):
-    profile = seed_default_profile(db)
+    profile = seed_profile(db, activity.creator_code)
 
     record = Activity(
         title=activity.title,
@@ -293,6 +362,7 @@ def create_activity(
         category=activity.category,
         description=activity.description,
         photo_url=activity.photo_url,
+        creator_code=profile.user_code,
         creator_photo_url=activity.creator_photo_url or profile.photo_url,
         max_people=activity.max_people,
         interested_count=activity.interested_count,
@@ -311,6 +381,7 @@ def create_activity(
         "category": record.category,
         "description": record.description,
         "photo_url": record.photo_url,
+        "creator_code": record.creator_code,
         "creator_photo_url": record.creator_photo_url,
         "max_people": record.max_people,
         "interested_count": record.interested_count,
@@ -333,6 +404,7 @@ def get_activities(db: Session = Depends(get_db)):
             "category": record.category,
             "description": record.description,
             "photo_url": record.photo_url,
+            "creator_code": record.creator_code,
             "creator_photo_url": record.creator_photo_url,
             "max_people": record.max_people,
             "interested_count": record.interested_count,

@@ -3,6 +3,19 @@ import Constants from 'expo-constants';
 const expoHost = Constants.expoConfig?.hostUri?.split(':')[0];
 
 export const API_BASE_URL = `http://${expoHost ?? '10.43.56.78'}:8000`;
+const DEFAULT_USER_CODE = 'rojan-txst';
+
+let currentUserCode = DEFAULT_USER_CODE;
+
+export function getCurrentUserCode() {
+  return currentUserCode;
+}
+
+export function setCurrentUserCode(userCode: string) {
+  const cleanCode = userCode.trim().toLowerCase();
+  currentUserCode = cleanCode || DEFAULT_USER_CODE;
+  return currentUserCode;
+}
 
 export type CampusActivity = {
   id: number;
@@ -13,6 +26,7 @@ export type CampusActivity = {
   category: string;
   description: string;
   photo_url: string;
+  creator_code: string;
   creator_photo_url: string;
   max_people: number;
   interested_count: number;
@@ -26,6 +40,7 @@ export type NewCampusActivity = {
   category: string;
   description: string;
   photo_url: string;
+  creator_code: string;
   creator_photo_url: string;
   max_people: number;
   interested_count: number;
@@ -82,8 +97,9 @@ export async function createActivity(activity: NewCampusActivity) {
 }
 
 
-export async function getProfile(): Promise<UserProfile> {
-  const response = await fetch(`${API_BASE_URL}/profile`);
+export async function getProfile(userCode = getCurrentUserCode()): Promise<UserProfile> {
+  const cleanCode = setCurrentUserCode(userCode);
+  const response = await fetch(`${API_BASE_URL}/profile/${encodeURIComponent(cleanCode)}`);
 
   if (!response.ok) {
     throw new Error('Failed to load profile');
@@ -92,8 +108,12 @@ export async function getProfile(): Promise<UserProfile> {
   return response.json();
 }
 
-export async function updateProfile(profile: Pick<UserProfile, 'username' | 'bio' | 'photo_url'>) {
-  const response = await fetch(`${API_BASE_URL}/profile`, {
+export async function updateProfile(
+  profile: Pick<UserProfile, 'username' | 'bio' | 'photo_url'>,
+  userCode = getCurrentUserCode()
+) {
+  const cleanCode = setCurrentUserCode(userCode);
+  const response = await fetch(`${API_BASE_URL}/profile/${encodeURIComponent(cleanCode)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(profile),

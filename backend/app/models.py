@@ -23,6 +23,7 @@ class Activity(Base):
     category = Column(String, nullable=False)
     description = Column(String, default="")
     photo_url = Column(String, default="")
+    creator_code = Column(String, default="")
     creator_photo_url = Column(String, default="")
     max_people = Column(Integer, default=0)
     interested_count = Column(Integer, default=0)

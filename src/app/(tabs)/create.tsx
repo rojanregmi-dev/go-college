@@ -27,7 +27,7 @@ export default function CreateScreen() {
   async function handleCreatePlan() {
     const period = selectedTime === 'Custom Date' ? customTime.trim() : selectedTime;
 
-    if (!title.trim() || !groupName.trim() || !location.trim() || !period) {
+    if (!title.trim() || (postType === 'Activity' && !groupName.trim()) || !location.trim() || !period) {
       Alert.alert('Missing info', 'Fill out the plan, poster or host, location, and time.');
       return;
     }
@@ -35,15 +35,17 @@ export default function CreateScreen() {
     try {
       setSaving(true);
       const profile = await getProfile();
+      const displayName = postType === 'Meet' ? profile.username : groupName.trim();
 
       await createActivity({
         title: title.trim(),
-        group_name: groupName.trim(),
+        group_name: displayName,
         period,
         location: location.trim(),
         category: postType,
         description: description.trim(),
         photo_url: photoUrl,
+        creator_code: profile.user_code,
         creator_photo_url: profile.photo_url,
         max_people: Number(maxPeople) || 0,
         interested_count: 1,
@@ -141,9 +143,10 @@ export default function CreateScreen() {
       <TextInput
         value={groupName}
         onChangeText={setGroupName}
-        placeholder={postType === 'Meet' ? 'Posted by, like Rojan' : 'Hosted by, like GO Builders'}
+        placeholder={postType === 'Meet' ? 'Meet posts use your profile name' : 'Hosted by, like GO Builders'}
         placeholderTextColor="#94A3B8"
         style={styles.input}
+        editable={postType === 'Activity'}
       />
       <TextInput value={location} onChangeText={setLocation} placeholder="Location" placeholderTextColor="#94A3B8" style={styles.input} />
       <TextInput value={description} onChangeText={setDescription} placeholder="Description" placeholderTextColor="#94A3B8" style={[styles.input, styles.descriptionInput]} multiline />

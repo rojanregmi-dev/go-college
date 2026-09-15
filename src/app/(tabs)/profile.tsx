@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { API_BASE_URL, getProfile, updateProfile, uploadFile } from '../../services/api';
+import { API_BASE_URL, getProfile, setCurrentUserCode, updateProfile, uploadFile } from '../../services/api';
 
 export default function ProfileScreen() {
   const [username, setUsername] = useState('');
@@ -45,20 +45,52 @@ export default function ProfileScreen() {
       return;
     }
 
+    if (!userCode.trim()) {
+      Alert.alert('Missing ID', 'Add a demo ID before saving.');
+      return;
+    }
+
     try {
       setSaving(true);
+      const cleanCode = setCurrentUserCode(userCode);
 
       await updateProfile({
         username: username.trim(),
         bio: bio.trim(),
         photo_url: photoUrl.trim(),
-      });
+      }, cleanCode);
+
+      setUserCode(cleanCode);
 
       Alert.alert('Profile saved', 'Your profile was updated.');
     } catch (error) {
       Alert.alert('Connection error', 'Could not save your profile.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSwitchUser() {
+    if (!userCode.trim()) {
+      Alert.alert('Missing ID', 'Type a demo ID like alex-txst.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const cleanCode = setCurrentUserCode(userCode);
+      const profile = await getProfile(cleanCode);
+
+      setUsername(profile.username);
+      setUserCode(profile.user_code);
+      setBio(profile.bio);
+      setPhotoUrl(profile.photo_url);
+      setPhotoSelected(false);
+    } catch (error) {
+      Alert.alert('Connection error', 'Could not switch demo user.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -100,7 +132,7 @@ export default function ProfileScreen() {
         username: username.trim(),
         bio: bio.trim(),
         photo_url: nextPhotoUrl,
-      });
+      }, userCode);
 
       Alert.alert('Photo uploaded', 'Your profile photo was saved.');
     } catch (error) {
@@ -148,8 +180,18 @@ export default function ProfileScreen() {
           </Pressable>
 
           <View style={styles.idCard}>
-            <Text style={styles.idLabel}>Your ID</Text>
-            <Text style={styles.idValue}>{userCode}</Text>
+            <Text style={styles.idLabel}>Demo user ID</Text>
+            <TextInput
+              value={userCode}
+              onChangeText={setUserCode}
+              autoCapitalize="none"
+              placeholder="example: alex-txst"
+              placeholderTextColor="#94A3B8"
+              style={styles.idInput}
+            />
+            <Pressable style={styles.switchButton} onPress={handleSwitchUser}>
+              <Text style={styles.switchButtonText}>Switch user</Text>
+            </Pressable>
           </View>
 
           <Text style={styles.label}>Username</Text>
@@ -201,7 +243,9 @@ const styles = StyleSheet.create({
   photoSubtitle: { marginTop: 3, color: '#245B91', fontSize: 13, fontWeight: '700' },
   idCard: { marginTop: 16, borderRadius: 22, backgroundColor: '#FFFFFF', padding: 18 },
   idLabel: { color: '#245B91', fontSize: 13, fontWeight: '800' },
-  idValue: { marginTop: 5, color: '#071C4D', fontSize: 24, fontWeight: '900' },
+  idInput: { marginTop: 8, color: '#071C4D', fontSize: 22, fontWeight: '900' },
+  switchButton: { marginTop: 12, alignSelf: 'flex-start', borderRadius: 16, backgroundColor: '#E0F7FF', paddingHorizontal: 14, paddingVertical: 10 },
+  switchButtonText: { color: '#0F4C81', fontSize: 14, fontWeight: '900' },
   label: { marginTop: 20, color: '#071C4D', fontSize: 15, fontWeight: '900' },
   input: { marginTop: 9, borderRadius: 18, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, color: '#071C4D', fontWeight: '700' },
   bioInput: { minHeight: 112, textAlignVertical: 'top' },
